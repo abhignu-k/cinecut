@@ -5,6 +5,19 @@ from __future__ import annotations
 from cinecut.schemas import SectionLabel, SongSection
 
 
+def _window_mean_energy(
+    sections: list[SongSection], start_ms: int, end_ms: int
+) -> float:
+    """Compute duration-weighted mean energy over `[start_ms, end_ms]`."""
+    dur = max(1, end_ms - start_ms)
+    total = 0.0
+    for sec in sections:
+        overlap = min(end_ms, sec.end_ms) - max(start_ms, sec.start_ms)
+        if overlap > 0:
+            total += (overlap / dur) * sec.energy
+    return total
+
+
 def select_highlight_window(
     duration_ms: int,
     sections: list[SongSection],
@@ -14,6 +27,9 @@ def select_highlight_window(
     full_audio: bool = False,
 ) -> tuple[int, int]:
     """Select the `[start_ms, end_ms]` audio window for editing.
+
+    Favors windows containing a rising buildup-to-drop contrast rather than
+    flat opening loudness.
 
     Args:
         duration_ms: Total track duration in milliseconds.
@@ -50,21 +66,26 @@ def select_highlight_window(
 
     for cand_start in candidates:
         cand_end = cand_start + target_duration_ms
-        score = 0.0
+        mid = cand_start + round(target_duration_ms * 0.4)
+        first_e = _window_mean_energy(sections, cand_start, mid)
+        second_e = _window_mean_energy(sections, mid, cand_end)
+        mean_e = _window_mean_energy(sections, cand_start, cand_end)
+        drop_contrast = max(0.0, second_e - first_e)
+
         has_buildup = False
         has_drop = False
         for sec in sections:
             overlap = min(cand_end, sec.end_ms) - max(cand_start, sec.start_ms)
             if overlap <= 0:
                 continue
-            weight = overlap / target_duration_ms
-            score += weight * sec.energy
             if sec.label == SectionLabel.BUILDUP:
                 has_buildup = True
             elif sec.label == SectionLabel.DROP:
                 has_drop = True
+
+        score = mean_e + 0.65 * drop_contrast
         if has_buildup and has_drop:
-            score += 0.35
+            score += 0.25
         if score > best_score:
             best_score = score
             best_start = cand_start

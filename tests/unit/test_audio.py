@@ -62,6 +62,29 @@ def test_select_highlight_window_prefers_buildup_and_drop() -> None:
     ) == (5000, 15000)
 
 
+def test_select_highlight_window_skips_loud_intro_for_real_drop() -> None:
+    sections = [
+        SongSection(
+            start_ms=0, end_ms=25000, label=SectionLabel.DROP, energy=0.72
+        ),
+        SongSection(
+            start_ms=25000,
+            end_ms=40000,
+            label=SectionLabel.BUILDUP,
+            energy=0.40,
+        ),
+        SongSection(
+            start_ms=40000, end_ms=70000, label=SectionLabel.DROP, energy=0.98
+        ),
+    ]
+    start, end = select_highlight_window(
+        duration_ms=70000, sections=sections, target_duration_ms=30000
+    )
+    assert end - start == 30000
+    assert start >= 20000
+    assert start <= 40000 < end
+
+
 def test_analyze_audio_extracts_beats_and_sections(tmp_path: Path) -> None:
     wav = _write_click_track(tmp_path / "click.wav", bpm=120.0, dur_s=8.0)
     analysis = analyze_audio(wav, target_duration_ms=4000)

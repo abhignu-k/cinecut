@@ -38,7 +38,16 @@ def _classify_sections(
         ]
 
     peak = float(np.max(rms))
-    norm_rms = rms / peak if peak > 1e-8 else np.zeros_like(rms)
+    if peak <= 1e-8:
+        norm_rms = np.zeros_like(rms)
+    else:
+        lo_p = float(np.percentile(rms, 10))
+        hi_p = float(np.percentile(rms, 95))
+        span = hi_p - lo_p
+        if span > 1e-6:
+            norm_rms = np.clip((rms - lo_p) / span, 0.0, 1.0)
+        else:
+            norm_rms = rms / peak
 
     chunk_frames = max(1, int((4.0 * sr) / hop_length))
     n_chunks = max(1, int(np.ceil(len(norm_rms) / chunk_frames)))
@@ -63,9 +72,9 @@ def _classify_sections(
             label = SectionLabel.INTRO
         elif idx == n_chunks - 1 and energy < 0.45:
             label = SectionLabel.OUTRO
-        elif energy >= 0.65:
+        elif energy >= 0.72:
             label = SectionLabel.DROP
-        elif slope > 0.12 or energy >= 0.42:
+        elif slope > 0.08 or energy >= 0.45:
             label = SectionLabel.BUILDUP
         else:
             label = SectionLabel.BRIDGE
