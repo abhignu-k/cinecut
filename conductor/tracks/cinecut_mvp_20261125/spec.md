@@ -60,9 +60,8 @@ Development follows the **Elephant-Goldfish Model (EGM)** alongside Conductor TD
   - Enforce shot bounds (`shot.start_ms <= src_start_ms < src_end_ms <= shot.end_ms`), speed bounds (`0.25 <= speed <= 4.0`), and minimum output clip length (`>= 250ms`).
 
 ### FR-6: FFmpeg Compositor (`compositor`)
-- Compile `EditTimeline` into a standalone FFmpeg `filter_complex_script` file (avoiding shell `ARG_MAX` limits) targeting `1080x1920` (`9:16`), `SAR 1:1`, CFR target FPS.
-- Support v0.1 kinetic effects: smart horizontal crop via `crop_x_norm`, Lanczos scale, `setpts` speed ramps, beat-synced `zoom_punch`, `flash` / `crossfade` transitions, and audio `loudnorm` + start/end fades.
-- Support chunked multi-segment rendering + `concat` fallback when clip count exceeds safe single-graph thresholds (e.g., > 40 clips).
+- Compile `EditTimeline` into a standalone FFmpeg `filter_complex_script` file (avoiding shell `ARG_MAX` limits) targeting `1080x1920` (`9:16`), `SAR 1:1`, CFR target FPS (`fps=<target_fps>,settb=AVTB` per branch).
+- Support v0.1 kinetic effects: smart horizontal crop via `crop_x_norm`, Lanczos scale, `setpts` speed ramps, beat-synced `zoom_punch` (animated `crop`+`scale` preserving PTS), `flash` transitions (120ms exposure decay at clip start preserving exact boundaries), and audio `loudnorm` + `apad`/`atrim` + fades.
 - Support `--dry-run-ffmpeg` to emit the script and command without running FFmpeg encoding.
 
 ### FR-7: OpenTimelineIO Export (`export`)

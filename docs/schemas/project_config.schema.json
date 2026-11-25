@@ -9,43 +9,56 @@
       ],
       "title": "EngineType",
       "type": "string"
+    },
+    "RationalFPS": {
+      "description": "Exact rational frame rate (e.g., 30000/1001 for 29.97 fps).",
+      "properties": {
+        "den": {
+          "description": "Frame rate denominator.",
+          "exclusiveMinimum": 0,
+          "title": "Den",
+          "type": "integer"
+        },
+        "num": {
+          "description": "Frame rate numerator.",
+          "exclusiveMinimum": 0,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ],
+      "title": "RationalFPS",
+      "type": "object"
     }
   },
-  "description": "Top-level configuration for a cinecut edit run.",
+  "description": "Domain configuration for a cinecut edit run.",
   "properties": {
     "audio_source": {
       "minLength": 1,
       "title": "Audio Source",
       "type": "string"
     },
-    "audio_start_s": {
+    "audio_start_ms": {
       "anyOf": [
         {
-          "minimum": 0.0,
-          "type": "number"
+          "minimum": 0,
+          "type": "integer"
         },
         {
           "type": "null"
         }
       ],
       "default": null,
-      "title": "Audio Start S"
+      "title": "Audio Start Ms"
     },
-    "cache_dir": {
-      "default": ".cinecut_cache",
-      "title": "Cache Dir",
-      "type": "string"
-    },
-    "dry_run_ffmpeg": {
-      "default": false,
-      "title": "Dry Run Ffmpeg",
-      "type": "boolean"
-    },
-    "duration_s": {
-      "default": 30.0,
-      "exclusiveMinimum": 0.0,
-      "title": "Duration S",
-      "type": "number"
+    "duration_ms": {
+      "default": 30000,
+      "exclusiveMinimum": 0,
+      "title": "Duration Ms",
+      "type": "integer"
     },
     "engine": {
       "$ref": "#/$defs/EngineType",
@@ -56,38 +69,13 @@
       "title": "Full Audio",
       "type": "boolean"
     },
-    "height": {
-      "default": 1920,
-      "exclusiveMinimum": 0,
-      "title": "Height",
-      "type": "integer"
-    },
-    "local_model": {
-      "default": "gemma3:12b",
-      "title": "Local Model",
-      "type": "string"
-    },
-    "local_url": {
-      "default": "http://127.0.0.1:11434",
-      "title": "Local Url",
-      "type": "string"
-    },
-    "no_cache": {
-      "default": false,
-      "title": "No Cache",
-      "type": "boolean"
-    },
     "stems": {
       "default": false,
       "title": "Stems",
       "type": "boolean"
     },
     "target_fps": {
-      "default": 30,
-      "maximum": 120,
-      "minimum": 1,
-      "title": "Target Fps",
-      "type": "integer"
+      "$ref": "#/$defs/RationalFPS"
     },
     "vibe": {
       "minLength": 1,
@@ -98,12 +86,6 @@
       "minLength": 1,
       "title": "Video Source",
       "type": "string"
-    },
-    "width": {
-      "default": 1080,
-      "exclusiveMinimum": 0,
-      "title": "Width",
-      "type": "integer"
     }
   },
   "required": [

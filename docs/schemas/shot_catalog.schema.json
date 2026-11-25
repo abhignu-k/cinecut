@@ -33,11 +33,6 @@
           "title": "Crop X Norm",
           "type": "number"
         },
-        "end_frame": {
-          "exclusiveMinimum": 0,
-          "title": "End Frame",
-          "type": "integer"
-        },
         "end_ms": {
           "exclusiveMinimum": 0,
           "title": "End Ms",
@@ -67,11 +62,6 @@
           "title": "Shot Id",
           "type": "string"
         },
-        "start_frame": {
-          "minimum": 0,
-          "title": "Start Frame",
-          "type": "integer"
-        },
         "start_ms": {
           "minimum": 0,
           "title": "Start Ms",
@@ -82,8 +72,6 @@
         "shot_id",
         "start_ms",
         "end_ms",
-        "start_frame",
-        "end_frame",
         "motion_score",
         "sharpness_score"
       ],
@@ -97,6 +85,7 @@
       "items": {
         "$ref": "#/$defs/ShotMetadata"
       },
+      "minItems": 1,
       "title": "Shots",
       "type": "array"
     },

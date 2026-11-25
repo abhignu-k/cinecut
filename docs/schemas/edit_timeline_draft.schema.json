@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "EffectType": {
+      "description": "Per-clip kinetic post-processing effects supported in v0.1.",
+      "enum": [
+        "none",
+        "zoom_punch"
+      ],
+      "title": "EffectType",
+      "type": "string"
+    },
+    "NarrativeRole": {
+      "description": "Story arc role assigned to a timeline clip.",
+      "enum": [
+        "setup",
+        "tension",
+        "climax",
+        "release"
+      ],
+      "title": "NarrativeRole",
+      "type": "string"
+    },
+    "TimelineClipDraft": {
+      "description": "Relaxed clip proposal emitted by an AI backend prior to solver repair.",
+      "properties": {
+        "dst_end_ms": {
+          "exclusiveMinimum": 0,
+          "title": "Dst End Ms",
+          "type": "integer"
+        },
+        "dst_start_ms": {
+          "minimum": 0,
+          "title": "Dst Start Ms",
+          "type": "integer"
+        },
+        "effect": {
+          "$ref": "#/$defs/EffectType",
+          "default": "none"
+        },
+        "narrative_role": {
+          "$ref": "#/$defs/NarrativeRole",
+          "default": "setup"
+        },
+        "rationale": {
+          "default": "",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "shot_id": {
+          "minLength": 1,
+          "title": "Shot Id",
+          "type": "string"
+        },
+        "speed": {
+          "default": 1.0,
+          "maximum": 4.0,
+          "minimum": 0.25,
+          "title": "Speed",
+          "type": "number"
+        },
+        "src_end_ms": {
+          "exclusiveMinimum": 0,
+          "title": "Src End Ms",
+          "type": "integer"
+        },
+        "src_start_ms": {
+          "minimum": 0,
+          "title": "Src Start Ms",
+          "type": "integer"
+        },
+        "transition": {
+          "$ref": "#/$defs/TransitionType",
+          "default": "cut"
+        }
+      },
+      "required": [
+        "shot_id",
+        "src_start_ms",
+        "src_end_ms",
+        "dst_start_ms",
+        "dst_end_ms"
+      ],
+      "title": "TimelineClipDraft",
+      "type": "object"
+    },
+    "TransitionType": {
+      "description": "Clip-to-clip transition styles preserving exact boundary timing.",
+      "enum": [
+        "cut",
+        "flash"
+      ],
+      "title": "TransitionType",
+      "type": "string"
+    }
+  },
+  "description": "Relaxed timeline proposal emitted by an AI backend.",
+  "properties": {
+    "clips": {
+      "items": {
+        "$ref": "#/$defs/TimelineClipDraft"
+      },
+      "minItems": 1,
+      "title": "Clips",
+      "type": "array"
+    }
+  },
+  "required": [
+    "clips"
+  ],
+  "title": "EditTimelineDraft",
+  "type": "object"
+}

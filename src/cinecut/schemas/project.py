@@ -18,28 +18,23 @@ class EngineType(StrEnum):
 
 
 class ProjectConfig(BaseModel):
-    """Top-level configuration for a cinecut edit run."""
+    """Domain configuration for a cinecut edit run."""
 
     video_source: str = Field(min_length=1)
     audio_source: str = Field(min_length=1)
     vibe: str = Field(min_length=1)
     engine: EngineType = EngineType.GEMINI
     stems: bool = False
-    audio_start_s: float | None = Field(default=None, ge=0.0)
-    duration_s: float = Field(default=30.0, gt=0.0)
+    audio_start_ms: int | None = Field(default=None, ge=0)
+    duration_ms: int = Field(default=30_000, gt=0)
     full_audio: bool = False
-    target_fps: int = Field(default=30, ge=1, le=120)
-    width: int = Field(default=1080, gt=0)
-    height: int = Field(default=1920, gt=0)
-    local_url: str = "http://127.0.0.1:11434"
-    local_model: str = "gemma3:12b"
-    cache_dir: str = ".cinecut_cache"
-    no_cache: bool = False
-    dry_run_ffmpeg: bool = False
+    target_fps: RationalFPS = Field(
+        default_factory=lambda: RationalFPS(num=30, den=1)
+    )
 
 
 class MediaInfo(BaseModel):
-    """Probed metadata for a normalized or raw media stream."""
+    """Probed metadata for a raw or normalized media stream."""
 
     path: str = Field(min_length=1)
     width: int = Field(gt=0)
@@ -47,5 +42,9 @@ class MediaInfo(BaseModel):
     duration_ms: int = Field(gt=0)
     fps: RationalFPS
     is_vfr: bool = False
+    rotation_deg: int = 0
+    sar_num: int = Field(default=1, gt=0)
+    sar_den: int = Field(default=1, gt=0)
+    start_time_ms: int = 0
     has_audio: bool = False
     audio_sample_rate: int | None = Field(default=None, gt=0)

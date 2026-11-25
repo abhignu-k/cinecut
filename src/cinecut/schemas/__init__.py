@@ -17,9 +17,11 @@ from cinecut.schemas.project import EngineType, MediaInfo, ProjectConfig
 from cinecut.schemas.timebase import RationalFPS
 from cinecut.schemas.timeline import (
     EditTimeline,
+    EditTimelineDraft,
     EffectType,
     NarrativeRole,
     TimelineClip,
+    TimelineClipDraft,
     TransitionType,
 )
 from cinecut.schemas.vision import ShotCatalog, ShotMetadata
@@ -27,6 +29,7 @@ from cinecut.schemas.vision import ShotCatalog, ShotMetadata
 __all__ = [
     "AudioAnalysis",
     "EditTimeline",
+    "EditTimelineDraft",
     "EffectType",
     "EngineType",
     "MediaInfo",
@@ -39,6 +42,7 @@ __all__ = [
     "SongSection",
     "StemEnergyCurve",
     "TimelineClip",
+    "TimelineClipDraft",
     "TransitionType",
     "export_json_schemas",
 ]
@@ -48,6 +52,7 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "media_info.schema.json": MediaInfo,
     "audio_analysis.schema.json": AudioAnalysis,
     "shot_catalog.schema.json": ShotCatalog,
+    "edit_timeline_draft.schema.json": EditTimelineDraft,
     "edit_timeline.schema.json": EditTimeline,
 }
 

@@ -46,6 +46,13 @@
     "TimelineClip": {
       "description": "Single source-to-destination edit decision with strict sync check.",
       "properties": {
+        "crop_x_norm": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Crop X Norm",
+          "type": "number"
+        },
         "dst_end_ms": {
           "exclusiveMinimum": 0,
           "title": "Dst End Ms",
@@ -65,7 +72,7 @@
           "default": "setup"
         },
         "rationale": {
-          "minLength": 1,
+          "default": "",
           "title": "Rationale",
           "type": "string"
         },
@@ -101,29 +108,32 @@
         "src_start_ms",
         "src_end_ms",
         "dst_start_ms",
-        "dst_end_ms",
-        "rationale"
+        "dst_end_ms"
       ],
       "title": "TimelineClip",
       "type": "object"
     },
     "TransitionType": {
-      "description": "Clip-to-clip transition styles supported in v0.1.",
+      "description": "Clip-to-clip transition styles preserving exact boundary timing.",
       "enum": [
         "cut",
-        "flash",
-        "crossfade"
+        "flash"
       ],
       "title": "TransitionType",
       "type": "string"
     }
   },
-  "description": "Validated, contiguous edit timeline ready for FFmpeg and OTIO.",
+  "description": "Validated, self-contained edit timeline ready for FFmpeg and OTIO.",
   "properties": {
     "audio_duration_ms": {
       "exclusiveMinimum": 0,
       "title": "Audio Duration Ms",
       "type": "integer"
+    },
+    "audio_path": {
+      "minLength": 1,
+      "title": "Audio Path",
+      "type": "string"
     },
     "audio_start_ms": {
       "minimum": 0,
@@ -144,6 +154,16 @@
       "title": "Height",
       "type": "integer"
     },
+    "render_video_path": {
+      "minLength": 1,
+      "title": "Render Video Path",
+      "type": "string"
+    },
+    "source_video_path": {
+      "minLength": 1,
+      "title": "Source Video Path",
+      "type": "string"
+    },
     "target_fps": {
       "$ref": "#/$defs/RationalFPS"
     },
@@ -155,6 +175,9 @@
     }
   },
   "required": [
+    "source_video_path",
+    "render_video_path",
+    "audio_path",
     "target_fps",
     "audio_start_ms",
     "audio_duration_ms",

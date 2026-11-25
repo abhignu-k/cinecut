@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from cinecut.schemas import (
     AudioAnalysis,
     EditTimeline,
+    EditTimelineDraft,
     EffectType,
     EngineType,
     MediaInfo,
@@ -19,6 +20,7 @@ from cinecut.schemas import (
     SongSection,
     StemEnergyCurve,
     TimelineClip,
+    TimelineClipDraft,
     TransitionType,
     export_json_schemas,
 )
@@ -27,6 +29,7 @@ from cinecut.schemas import (
 def test_rational_fps_conversions_and_validation() -> None:
     fps = RationalFPS(num=30000, den=1001)
     assert pytest.approx(fps.as_float(), rel=1e-4) == 29.97003
+    assert pytest.approx(fps.frame_duration_ms(), rel=1e-4) == 33.3667
     assert fps.ms_to_frame(1000) == 30
     assert fps.frame_to_ms(30) == 1001
 
@@ -44,16 +47,15 @@ def test_project_config_and_media_info_validation() -> None:
         vibe="underdog wet-weather comeback",
         engine=EngineType.MOCK,
     )
-    assert cfg.width == 1080
-    assert cfg.height == 1920
-    assert cfg.duration_s == 30.0
+    assert cfg.duration_ms == 30_000
+    assert cfg.target_fps.as_float() == 30.0
 
     with pytest.raises(ValidationError):
         ProjectConfig(
             video_source="race.mp4",
             audio_source="track.wav",
             vibe="test",
-            duration_s=-1.0,
+            duration_ms=0,
         )
 
     media = MediaInfo(
@@ -63,15 +65,18 @@ def test_project_config_and_media_info_validation() -> None:
         duration_ms=60000,
         fps=RationalFPS(num=30, den=1),
         is_vfr=False,
+        rotation_deg=90,
+        sar_num=1,
+        sar_den=1,
+        start_time_ms=0,
         has_audio=True,
         audio_sample_rate=48000,
     )
-    assert media.duration_ms == 60000
+    assert media.rotation_deg == 90
 
 
 def test_audio_analysis_validation() -> None:
     analysis = AudioAnalysis(
-        sample_rate=48000,
         duration_ms=10000,
         bpm=120.0,
         beats_ms=[0, 500, 1000, 1500],
@@ -110,17 +115,11 @@ def test_audio_analysis_validation() -> None:
 
     with pytest.raises(ValidationError):
         AudioAnalysis(
-            sample_rate=48000,
             duration_ms=10000,
             bpm=120.0,
             beats_ms=[0, 500, 1000],
-            downbeats_ms=[0],
+            downbeats_ms=[0, 12000],
             sections=[],
-            stem_curves=StemEnergyCurve(
-                drums=[0.1, 0.2],
-                bass=[0.1, 0.2],
-                vocals=[0.1, 0.2],
-            ),
             selected_window_start_ms=0,
             selected_window_end_ms=10000,
         )
@@ -131,8 +130,6 @@ def test_shot_catalog_validation() -> None:
         shot_id="shot_001",
         start_ms=0,
         end_ms=2500,
-        start_frame=0,
-        end_frame=75,
         motion_score=0.75,
         sharpness_score=120.5,
         crop_x_norm=0.5,
@@ -150,8 +147,6 @@ def test_shot_catalog_validation() -> None:
             shot_id="bad_crop",
             start_ms=0,
             end_ms=1000,
-            start_frame=0,
-            end_frame=30,
             motion_score=0.5,
             sharpness_score=50.0,
             crop_x_norm=1.2,
@@ -166,7 +161,21 @@ def test_shot_catalog_validation() -> None:
         )
 
 
-def test_edit_timeline_sync_and_contiguity() -> None:
+def test_edit_timeline_and_draft_validation() -> None:
+    draft = EditTimelineDraft(
+        clips=[
+            TimelineClipDraft(
+                shot_id="shot_001",
+                src_start_ms=0,
+                src_end_ms=1900,
+                dst_start_ms=0,
+                dst_end_ms=1000,
+                speed=2.0,
+            )
+        ]
+    )
+    assert len(draft.clips) == 1
+
     clip1 = TimelineClip(
         shot_id="shot_001",
         src_start_ms=0,
@@ -174,10 +183,10 @@ def test_edit_timeline_sync_and_contiguity() -> None:
         dst_start_ms=0,
         dst_end_ms=1000,
         speed=2.0,
+        crop_x_norm=0.35,
         transition=TransitionType.CUT,
         effect=EffectType.ZOOM_PUNCH,
         narrative_role=NarrativeRole.CLIMAX,
-        rationale="Fast overtake on drop",
     )
     clip2 = TimelineClip(
         shot_id="shot_002",
@@ -192,29 +201,31 @@ def test_edit_timeline_sync_and_contiguity() -> None:
         rationale="Podium celebration",
     )
     timeline = EditTimeline(
+        source_video_path="raw.mp4",
+        render_video_path="proxy.mp4",
+        audio_path="audio.wav",
         target_fps=RationalFPS(num=30, den=1),
         audio_start_ms=0,
         audio_duration_ms=2000,
         clips=[clip1, clip2],
     )
-    assert timeline.total_dst_ms == 2000
+    assert timeline.clips[0].crop_x_norm == 0.35
 
     with pytest.raises(ValidationError):
         TimelineClip(
             shot_id="shot_001",
             src_start_ms=0,
-            src_end_ms=2000,
+            src_end_ms=400,
             dst_start_ms=0,
-            dst_end_ms=1500,
+            dst_end_ms=200,
             speed=2.0,
-            transition=TransitionType.CUT,
-            effect=EffectType.NONE,
-            narrative_role=NarrativeRole.SETUP,
-            rationale="Speed mismatch",
         )
 
     with pytest.raises(ValidationError):
         EditTimeline(
+            source_video_path="raw.mp4",
+            render_video_path="proxy.mp4",
+            audio_path="audio.wav",
             target_fps=RationalFPS(num=30, den=1),
             audio_start_ms=0,
             audio_duration_ms=2500,
@@ -224,7 +235,7 @@ def test_edit_timeline_sync_and_contiguity() -> None:
 
 def test_export_json_schemas(tmp_path: Path) -> None:
     exported = export_json_schemas(tmp_path)
-    assert len(exported) == 5
+    assert len(exported) == 6
     for path in exported:
         assert path.exists()
         data = json.loads(path.read_text(encoding="utf-8"))

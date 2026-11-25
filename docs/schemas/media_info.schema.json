@@ -24,7 +24,7 @@
       "type": "object"
     }
   },
-  "description": "Probed metadata for a normalized or raw media stream.",
+  "description": "Probed metadata for a raw or normalized media stream.",
   "properties": {
     "audio_sample_rate": {
       "anyOf": [
@@ -66,6 +66,28 @@
       "minLength": 1,
       "title": "Path",
       "type": "string"
+    },
+    "rotation_deg": {
+      "default": 0,
+      "title": "Rotation Deg",
+      "type": "integer"
+    },
+    "sar_den": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Sar Den",
+      "type": "integer"
+    },
+    "sar_num": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Sar Num",
+      "type": "integer"
+    },
+    "start_time_ms": {
+      "default": 0,
+      "title": "Start Time Ms",
+      "type": "integer"
     },
     "width": {
       "exclusiveMinimum": 0,

@@ -18,7 +18,7 @@ class SectionLabel(StrEnum):
 
 
 class SongSection(BaseModel):
-    """Contiguous musical section with normalized energy."""
+    """Contiguous track-relative musical section with normalized energy."""
 
     start_ms: int = Field(ge=0)
     end_ms: int = Field(gt=0)
@@ -53,9 +53,12 @@ class StemEnergyCurve(BaseModel):
 
 
 class AudioAnalysis(BaseModel):
-    """Complete musical analysis and selected highlight window."""
+    """Track-relative musical analysis and selected highlight window.
 
-    sample_rate: int = Field(gt=0)
+    All timestamps (`beats_ms`, `downbeats_ms`, `sections`) are expressed in
+    track-relative coordinates `[0, duration_ms]`.
+    """
+
     duration_ms: int = Field(gt=0)
     bpm: float = Field(gt=0.0)
     beats_ms: list[int]
@@ -75,11 +78,26 @@ class AudioAnalysis(BaseModel):
             raise ValueError(
                 "selected_window_end_ms cannot exceed duration_ms."
             )
-        if any(
-            b2 < b1
-            for b1, b2 in zip(self.beats_ms, self.beats_ms[1:], strict=False)
+        for name, series in (
+            ("beats_ms", self.beats_ms),
+            ("downbeats_ms", self.downbeats_ms),
         ):
-            raise ValueError("beats_ms must be monotonically non-decreasing.")
+            if any(t < 0 or t > self.duration_ms for t in series):
+                raise ValueError(f"{name} values must be in [0, duration_ms].")
+            if any(t2 < t1 for t1, t2 in zip(series, series[1:], strict=False)):
+                raise ValueError(
+                    f"{name} must be monotonically non-decreasing."
+                )
+        for sec in self.sections:
+            if sec.end_ms > self.duration_ms:
+                raise ValueError(
+                    "SongSection end_ms cannot exceed duration_ms."
+                )
+        if any(
+            s2.start_ms < s1.end_ms
+            for s1, s2 in zip(self.sections, self.sections[1:], strict=False)
+        ):
+            raise ValueError("sections must be non-overlapping and ordered.")
         if self.stem_curves is not None and len(self.stem_curves.drums) != len(
             self.beats_ms
         ):
