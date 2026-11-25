@@ -20,23 +20,23 @@
   - [x] Audit `docs/architecture.md` and `src/cinecut/schemas/` via `egm-design`, `egm-implementation-readiness`, and `egm-zoom-out`, and resolve any blocking design/sync gaps
 - [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
-## Phase 3: Media Ingest & Musical Audio Parser (`ingest/`, `audio/`)
-- [~] Task: Implement non-destructive media ingest and VFR-to-CFR normalization (TDD)
-  - [~] Write failing unit tests for `ffprobe` stream parsing, VFR detection, CFR proxy/WAV extraction commands, and missing `[yt]` extra error reporting
-  - [ ] Implement `src/cinecut/ingest/` (`probe.py`, `prepare.py`, `youtube.py` optional wrapper) and verify tests + >80% coverage
-- [ ] Task: Implement musical structure, beat grid, highlight windowing & optional stems (TDD)
-  - [ ] Write failing unit tests for `librosa` beat/downbeat/section parsing, 30s buildup-to-drop window auto-selection, `--audio-start`/`--duration`/`--full-audio`, and optional `demucs` stem curve integration
-  - [ ] Implement `src/cinecut/audio/` (`analyzer.py`, `windowing.py`, `stems.py`) and verify tests + >80% coverage
-- [ ] Task: Run EGM Goldfish Audit 1 on `ingest/` and `audio/`
-  - [ ] Isolate-review timebase normalization, non-integer FPS (`23.976`/`29.97`), and edge-case tempo tracks
-- [ ] Task: Phase Verification & Checkpoint (Refer to workflow.md)
+## Phase 3: Media Ingest & Musical Audio Parser (`ingest/`, `audio/`) [checkpoint: 9f40ea7]
+- [x] Task: Implement non-destructive media ingest and VFR-to-CFR normalization (TDD) (9f40ea7)
+  - [x] Write failing unit tests for `ffprobe` stream parsing, VFR detection, CFR proxy/WAV extraction commands, and missing `[yt]` extra error reporting
+  - [x] Implement `src/cinecut/ingest/` (`probe.py`, `prepare.py`, `youtube.py` optional wrapper) and verify tests + >80% coverage
+- [x] Task: Implement musical structure, beat grid, highlight windowing & optional stems (TDD) (9f40ea7)
+  - [x] Write failing unit tests for `librosa` beat/downbeat/section parsing, 30s buildup-to-drop window auto-selection, `--audio-start`/`--duration`/`--full-audio`, and optional `demucs` stem curve integration
+  - [x] Implement `src/cinecut/audio/` (`analyzer.py`, `windowing.py`, `stems.py`) and verify tests + >80% coverage
+- [x] Task: Run EGM Goldfish Audit 1 on `ingest/` and `audio/`
+  - [x] Isolate-review timebase normalization, non-integer FPS (`23.976`/`29.97`), and edge-case tempo tracks
+- [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
 ## Phase 4: Vision & Shot Indexing (`vision/`)
-- [ ] Task: Implement shot detection, motion/sharpness scoring, smart crop & keyframes (TDD)
-  - [ ] Write failing unit tests for `pyscenedetect` boundary filtering (`<400ms` flash pruning, long-take splitting), optical-flow/frame-diff motion score, Laplacian sharpness, `crop_x_norm`, and 3-frame JPEG keyframe strips
-  - [ ] Implement `src/cinecut/vision/` (`detector.py`, `scoring.py`, `keyframes.py`) and verify tests + >80% coverage
-- [ ] Task: Run EGM Goldfish Audit 2 on `vision/`
-  - [ ] Isolate-review frame-index vs. PTS parity, cache reuse, and memory bounds on long highlight videos
+- [x] Task: Implement shot detection, motion/sharpness scoring, smart crop & keyframes (TDD)
+  - [x] Write failing unit tests for `pyscenedetect` boundary filtering (`<400ms` flash pruning, long-take splitting), optical-flow/frame-diff motion score, Laplacian sharpness, `crop_x_norm`, and 3-frame JPEG keyframe strips
+  - [x] Implement `src/cinecut/vision/` (`detector.py`, `scoring.py`, `keyframes.py`) and verify tests + >80% coverage
+- [~] Task: Run EGM Goldfish Audit 2 on `vision/`
+  - [~] Isolate-review frame-index vs. PTS parity, cache reuse, and memory bounds on long highlight videos
 - [ ] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
 ## Phase 5: Dual-Engine AI & Deterministic Timeline Solver (`ai/`, `planner/`)

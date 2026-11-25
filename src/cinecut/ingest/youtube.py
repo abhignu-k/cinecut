@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 
@@ -62,11 +62,13 @@ def resolve_media_source(
         "outtmpl": out_tmpl,
         "quiet": True,
         "no_warnings": True,
-        "format": "bestaudio/best"
-        if kind == "audio"
-        else "bestvideo+bestaudio/best",
+        "format": (
+            "bestaudio/best" if kind == "audio" else "bestvideo+bestaudio/best"
+        ),
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(source, download=True)
-        filename = ydl.prepare_filename(info)
-    return Path(filename)
+        info: dict[str, Any] = ydl.extract_info(source, download=True)
+        req_downloads = info.get("requested_downloads") or []
+        if req_downloads and req_downloads[0].get("filepath"):
+            return Path(str(req_downloads[0]["filepath"]))
+        return Path(str(ydl.prepare_filename(info)))

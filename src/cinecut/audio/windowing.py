@@ -25,13 +25,17 @@ def select_highlight_window(
     Returns:
         `(start_ms, end_ms)` tuple within `[0, duration_ms]`.
     """
-    if full_audio or duration_ms <= target_duration_ms:
+    if full_audio:
         return 0, duration_ms
 
     if audio_start_ms is not None:
-        start = min(max(0, audio_start_ms), max(0, duration_ms - 1))
+        max_start = max(0, duration_ms - min(duration_ms, target_duration_ms))
+        start = min(max(0, audio_start_ms), max_start)
         end = min(duration_ms, start + target_duration_ms)
         return start, end
+
+    if duration_ms <= target_duration_ms:
+        return 0, duration_ms
 
     if not sections:
         return 0, min(duration_ms, target_duration_ms)
@@ -40,8 +44,11 @@ def select_highlight_window(
     best_start = 0
     step_ms = 500
     max_start = max(0, duration_ms - target_duration_ms)
+    candidates = list(range(0, max_start + 1, step_ms))
+    if not candidates or candidates[-1] != max_start:
+        candidates.append(max_start)
 
-    for cand_start in range(0, max_start + 1, step_ms):
+    for cand_start in candidates:
         cand_end = cand_start + target_duration_ms
         score = 0.0
         has_buildup = False

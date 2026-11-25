@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -57,7 +58,7 @@ def extract_stem_curves(
 
     with tempfile.TemporaryDirectory() as tmp:
         cmd = [
-            "python3",
+            sys.executable,
             "-m",
             "demucs.separate",
             "-n",

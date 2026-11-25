@@ -10,9 +10,28 @@ from typing import Any
 
 from cinecut.schemas import MediaInfo, RationalFPS
 
+_NTSC_MAP: tuple[tuple[float, RationalFPS], ...] = (
+    (23.976, RationalFPS(num=24000, den=1001)),
+    (29.97, RationalFPS(num=30000, den=1001)),
+    (59.94, RationalFPS(num=60000, den=1001)),
+)
+
 
 class IngestError(RuntimeError):
     """Raised when media probing or normalization fails."""
+
+
+def _parse_optional_float(raw: object) -> float | None:
+    """Parse an optional float value, treating 'N/A' or empty as None."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text or text.upper() == "N/A":
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
 
 
 def _parse_fps(raw: str | None) -> RationalFPS:
@@ -25,7 +44,11 @@ def _parse_fps(raw: str | None) -> RationalFPS:
         if num <= 0 or den <= 0:
             raise IngestError(f"Non-positive frame rate: {raw!r}")
         return RationalFPS(num=num, den=den)
-    frac = Fraction(float(raw)).limit_denominator(1001)
+    val = float(raw)
+    for approx, exact in _NTSC_MAP:
+        if abs(val - approx) < 0.01:
+            return exact
+    frac = Fraction(val).limit_denominator(1001)
     return RationalFPS(num=frac.numerator, den=frac.denominator)
 
 
@@ -63,7 +86,7 @@ def probe_media(path: Path) -> MediaInfo:
         Normalized `MediaInfo` model.
 
     Raises:
-        IngestError: If ffprobe fails or no video stream is present.
+        IngestError: If ffprobe fails, is missing, or no video stream exists.
     """
     cmd = [
         "ffprobe",
@@ -75,11 +98,19 @@ def probe_media(path: Path) -> MediaInfo:
         "-show_streams",
         str(path),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:
+        raise IngestError("ffprobe executable not found on PATH.") from exc
+
     if proc.returncode != 0:
         raise IngestError(f"ffprobe failed for {path}: {proc.stderr.strip()}")
 
-    data = json.loads(proc.stdout)
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise IngestError(f"Invalid JSON from ffprobe for {path}") from exc
+
     streams: list[dict[str, Any]] = data.get("streams", [])
     fmt: dict[str, Any] = data.get("format", {})
 
@@ -89,6 +120,11 @@ def probe_media(path: Path) -> MediaInfo:
     if video_stream is None:
         raise IngestError(f"No video stream found in {path}")
 
+    width = video_stream.get("width")
+    height = video_stream.get("height")
+    if not width or not height:
+        raise IngestError(f"Missing video dimensions in {path}")
+
     audio_stream = next(
         (s for s in streams if s.get("codec_type") == "audio"), None
     )
@@ -96,6 +132,7 @@ def probe_media(path: Path) -> MediaInfo:
     r_fps = _parse_fps(video_stream.get("r_frame_rate"))
     avg_raw = video_stream.get("avg_frame_rate")
     is_vfr = False
+    chosen_fps = r_fps
     if avg_raw and avg_raw not in ("0/0", "N/A"):
         avg_fps = _parse_fps(avg_raw)
         if (
@@ -103,14 +140,22 @@ def probe_media(path: Path) -> MediaInfo:
             > 0.005
         ):
             is_vfr = True
+            if r_fps.as_float() > 120.0:
+                chosen_fps = avg_fps
 
-    dur_raw = video_stream.get("duration") or fmt.get("duration")
-    if dur_raw is None:
+    dur_val = _parse_optional_float(
+        video_stream.get("duration")
+    ) or _parse_optional_float(fmt.get("duration"))
+    if dur_val is None:
         raise IngestError(f"Missing stream/format duration in {path}")
-    duration_ms = max(1, round(float(dur_raw) * 1000))
+    duration_ms = max(1, round(dur_val * 1000))
 
-    start_raw = video_stream.get("start_time") or fmt.get("start_time") or "0"
-    start_time_ms = round(float(start_raw) * 1000)
+    start_val = (
+        _parse_optional_float(video_stream.get("start_time"))
+        or _parse_optional_float(fmt.get("start_time"))
+        or 0.0
+    )
+    start_time_ms = round(start_val * 1000)
 
     sar_num, sar_den = _parse_sar(video_stream.get("sample_aspect_ratio"))
     audio_sr: int | None = None
@@ -119,10 +164,10 @@ def probe_media(path: Path) -> MediaInfo:
 
     return MediaInfo(
         path=str(path),
-        width=int(video_stream["width"]),
-        height=int(video_stream["height"]),
+        width=int(width),
+        height=int(height),
         duration_ms=duration_ms,
-        fps=r_fps,
+        fps=chosen_fps,
         is_vfr=is_vfr,
         rotation_deg=_extract_rotation(video_stream),
         sar_num=sar_num,

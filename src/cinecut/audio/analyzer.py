@@ -11,6 +11,7 @@ import numpy.typing as npt
 
 from cinecut.audio.stems import extract_stem_curves
 from cinecut.audio.windowing import select_highlight_window
+from cinecut.ingest.probe import IngestError
 from cinecut.schemas import (
     AudioAnalysis,
     SectionLabel,
@@ -109,17 +110,25 @@ def analyze_audio(
 
     Returns:
         Validated `AudioAnalysis` schema.
+
+    Raises:
+        IngestError: If the audio file contains zero samples.
     """
     y, sr_int = librosa.load(str(wav_path), sr=22050, mono=True)
     sr = int(sr_int)
+    if len(y) == 0:
+        raise IngestError(f"Audio file has zero samples: {wav_path}")
+
     duration_ms = max(1, round((len(y) / sr) * 1000))
+    if len(y) < 2048:
+        y = np.pad(y, (0, 2048 - len(y)))
 
     hop_length = 512
     tempo, beat_frames = librosa.beat.beat_track(
         y=y, sr=sr, hop_length=hop_length
     )
     tempo_val = float(np.atleast_1d(tempo)[0])
-    if tempo_val <= 0.0:
+    if not np.isfinite(tempo_val) or tempo_val <= 0.0:
         tempo_val = 120.0
 
     beat_times_s = librosa.frames_to_time(

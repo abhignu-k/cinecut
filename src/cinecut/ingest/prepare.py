@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 from pathlib import Path
 
@@ -26,7 +27,7 @@ def compute_media_hash(path: Path) -> str:
 
 
 def needs_proxy(info: MediaInfo) -> bool:
-    """Return True when input requires CFR/rotation/SAR normalization."""
+    """Return True when input requires CFR/rotation/SAR/PTS normalization."""
     return (
         info.is_vfr
         or info.rotation_deg != 0
@@ -58,14 +59,19 @@ def prepare_video(
         return proxy_path, probe_media(proxy_path)
 
     proxy_path.parent.mkdir(parents=True, exist_ok=True)
-    fps_expr = f"{info.fps.num}/{info.fps.den}"
+    tmp_path = proxy_path.with_suffix(".tmp.mp4")
+    fps_expr = (
+        f"{info.fps.num}/{info.fps.den}"
+        if info.fps.as_float() <= 60.0
+        else "60"
+    )
     cmd = [
         "ffmpeg",
         "-y",
         "-i",
         str(video_path),
         "-vf",
-        "scale=trunc(iw*sar/2)*2:trunc(ih/2)*2,setsar=1",
+        "setpts=PTS-STARTPTS,scale=trunc(iw*sar/2)*2:trunc(ih/2)*2,setsar=1",
         "-fps_mode",
         "cfr",
         "-r",
@@ -79,11 +85,16 @@ def prepare_video(
         "-pix_fmt",
         "yuv420p",
         "-an",
-        str(proxy_path),
+        str(tmp_path),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:
+        raise IngestError("ffmpeg executable not found on PATH.") from exc
     if proc.returncode != 0:
+        tmp_path.unlink(missing_ok=True)
         raise IngestError(f"FFmpeg proxy creation failed: {proc.stderr}")
+    os.replace(tmp_path, proxy_path)
     return proxy_path, probe_media(proxy_path)
 
 
@@ -97,21 +108,29 @@ def prepare_audio(
         return wav_path
 
     wav_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = wav_path.with_suffix(".tmp.wav")
     cmd = [
         "ffmpeg",
         "-y",
         "-i",
         str(audio_path),
         "-vn",
+        "-af",
+        "asetpts=PTS-STARTPTS",
         "-ac",
         "2",
         "-ar",
         "48000",
         "-c:a",
         "pcm_s16le",
-        str(wav_path),
+        str(tmp_path),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:
+        raise IngestError("ffmpeg executable not found on PATH.") from exc
     if proc.returncode != 0:
+        tmp_path.unlink(missing_ok=True)
         raise IngestError(f"FFmpeg audio extraction failed: {proc.stderr}")
+    os.replace(tmp_path, wav_path)
     return wav_path
