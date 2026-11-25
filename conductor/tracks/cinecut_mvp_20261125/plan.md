@@ -69,3 +69,6 @@
   - [x] Write E2E test running `cinecut edit --engine mock` on FFmpeg-generated synthetic multi-scene video + beat track, verifying MP4 (`1080x1920`, stream duration parity via `ffprobe`) and `.otio`
   - [x] Complete `README.md` (quickstart, architecture diagram, Gemini & local Gemma setup), `CONTRIBUTING.md`, run `ruff`, `mypy`, `pytest --cov=cinecut --cov-fail-under=80`
 - [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
+
+## Phase: Review Fixes
+- [x] Task: Apply review suggestions (80dfea4)
