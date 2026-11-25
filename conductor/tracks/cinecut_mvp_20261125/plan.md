@@ -1,6 +1,6 @@
 # Implementation Plan: cinecut v0.1 MVP
 
-## Phase 1: Repository Skeleton, Tooling & Environment Bootstrap
+## Phase 1: Repository Skeleton, Tooling & Environment Bootstrap [checkpoint: 8bb9f13]
 - [x] Task: Initialize MIT open-source Python package skeleton and development tooling (37e7dc1)
   - [x] Create `.gitignore`, MIT `LICENSE`, `pyproject.toml` (`hatchling`, Python `>=3.11,<3.14`, core deps + `[stems]`, `[yt]`, `[dev]` extras), `README.md`, and `CONTRIBUTING.md` stubs
   - [x] Provision `.venv` with `/usr/local/bin/python3.12` and install editable package with `[dev]` tools (`ruff`, `mypy`, `pytest`, `pytest-cov`)
@@ -8,11 +8,11 @@
 - [x] Task: Add failing smoke test and minimal CLI package entrypoint (TDD Red -> Green) (8bb9f13)
   - [x] Write failing test verifying `cinecut --help` and package import/version
   - [x] Implement `src/cinecut/__init__.py` and minimal `src/cinecut/cli.py` Typer app until test passes
-- [~] Task: Phase Verification & Checkpoint (Refer to workflow.md)
+- [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
 ## Phase 2: Elephant Phase — Architecture Spec, Shared Schemas & Critic Gate
-- [ ] Task: Write failing schema and timebase unit tests (TDD Red)
-  - [ ] Write tests covering `ProjectConfig`, `MediaInfo`, `AudioAnalysis`, `ShotCatalog`, `EditTimeline` validation, millisecond/rational FPS conversion, and invalid boundary rejections
+- [~] Task: Write failing schema and timebase unit tests (TDD Red)
+  - [~] Write tests covering `ProjectConfig`, `MediaInfo`, `AudioAnalysis`, `ShotCatalog`, `EditTimeline` validation, millisecond/rational FPS conversion, and invalid boundary rejections
 - [ ] Task: Implement Pydantic v2 schemas and canonical JSON Schema export (TDD Green)
   - [ ] Implement `src/cinecut/schemas/` (`project.py`, `audio.py`, `vision.py`, `timeline.py`) and deterministic schema export helper targeting `docs/schemas/*.json`
   - [ ] Author `docs/architecture.md` documenting module boundaries, cache layout, and A/V sync math
