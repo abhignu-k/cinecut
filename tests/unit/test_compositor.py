@@ -89,3 +89,26 @@ def test_render_timeline_dry_run_and_error(
     )
     with pytest.raises(CompositorError, match="FFmpeg render failed"):
         render_timeline(tl, out_mp4, script_path=script, dry_run=False)
+
+
+def test_filtergraph_clamps_short_audio_fades(tmp_path: Path) -> None:
+    short_tl = EditTimeline(
+        source_video_path=str(tmp_path / "raw.mp4"),
+        render_video_path=str(tmp_path / "proxy.mp4"),
+        audio_path=str(tmp_path / "audio.wav"),
+        target_fps=RationalFPS(num=30, den=1),
+        audio_start_ms=0,
+        audio_duration_ms=300,
+        clips=[
+            TimelineClip(
+                shot_id="s1",
+                src_start_ms=0,
+                src_end_ms=300,
+                dst_start_ms=0,
+                dst_end_ms=300,
+            )
+        ],
+    )
+    script = build_filter_complex_script(short_tl)
+    assert "afade=t=in:st=0:d=0.100000" in script
+    assert "afade=t=out:st=0.200000:d=0.100000" in script

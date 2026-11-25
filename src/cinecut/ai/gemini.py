@@ -10,7 +10,11 @@ from google.genai import types
 from pydantic import ValidationError
 
 from cinecut.ai.base import AIBackendError
-from cinecut.ai.prompts import build_editing_prompt, stitch_keyframe_strip
+from cinecut.ai.prompts import (
+    build_editing_prompt,
+    select_representative_shots,
+    stitch_keyframe_strip,
+)
 from cinecut.schemas import AudioAnalysis, EditTimelineDraft, ShotCatalog
 
 
@@ -45,7 +49,7 @@ class GeminiBackend:
         """Call Gemini structured output and validate EditTimelineDraft."""
         prompt = build_editing_prompt(audio, catalog, vibe)
         contents: list[Any] = [prompt]
-        for shot in catalog.shots[:12]:
+        for shot in select_representative_shots(catalog.shots, limit=12):
             strip = stitch_keyframe_strip(shot.keyframe_paths)
             if strip is not None:
                 contents.append(f"Shot {shot.shot_id}:")

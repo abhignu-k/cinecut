@@ -141,3 +141,56 @@ def test_composable_analyze_plan_render_dry_run(tmp_path: Path) -> None:
     r_info = json.loads(res_r.output)
     assert r_info["dry_run"] is True
     assert Path(r_info["otio"]).exists()
+
+    bad_plan = runner.invoke(
+        app,
+        [
+            "plan",
+            "--audio-json",
+            str(tmp_path / "missing.json"),
+            "--shots-json",
+            a_info["shots_json"],
+            "--source-video",
+            a_info["source_video"],
+            "--render-video",
+            a_info["render_video"],
+            "--audio-wav",
+            a_info["audio_wav"],
+            "--vibe",
+            "test",
+        ],
+    )
+    assert bad_plan.exit_code == 1
+
+    bad_render = runner.invoke(
+        app,
+        ["render", "--timeline-json", str(tmp_path / "missing_tl.json")],
+    )
+    assert bad_render.exit_code == 1
+
+    res_v = runner.invoke(
+        app,
+        [
+            "edit",
+            "--video",
+            str(video),
+            "--audio",
+            str(audio),
+            "--vibe",
+            "verbose run",
+            "--engine",
+            "mock",
+            "--duration",
+            "2.0",
+            "--cache-dir",
+            str(cache_dir),
+            "--out",
+            str(tmp_path / "v_out.mp4"),
+            "--otio",
+            str(tmp_path / "v_out.otio"),
+            "--dry-run-ffmpeg",
+            "--verbose",
+        ],
+    )
+    assert res_v.exit_code == 0, res_v.output
+    assert (cache_dir / "timeline.json").exists()

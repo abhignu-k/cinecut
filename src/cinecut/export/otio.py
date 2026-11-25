@@ -9,11 +9,14 @@ import opentimelineio as otio
 from cinecut.schemas import EditTimeline, RationalFPS, TransitionType
 
 
+def _frames_to_rt(frames: int, fps: RationalFPS) -> otio.opentime.RationalTime:
+    """Create frame-rate RationalTime from an integer frame count."""
+    return otio.opentime.RationalTime(float(frames), fps.as_float())
+
+
 def _ms_to_rt(ms: int, fps: RationalFPS) -> otio.opentime.RationalTime:
     """Convert integer milliseconds to frame-rate RationalTime."""
-    rate = fps.as_float()
-    frames = round((ms * rate) / 1000.0)
-    return otio.opentime.RationalTime(float(frames), rate)
+    return _frames_to_rt(fps.ms_to_frame(ms), fps)
 
 
 def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
@@ -30,7 +33,7 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
     fps = timeline.target_fps
     otio_tl = otio.schema.Timeline(
         name="cinecut_edit",
-        global_start_time=_ms_to_rt(0, fps),
+        global_start_time=_frames_to_rt(0, fps),
     )
 
     video_track = otio.schema.Track(
@@ -40,13 +43,15 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
     video_ref = otio.schema.ExternalReference(target_url=video_uri)
 
     for clip in timeline.clips:
-        dst_dur = clip.dst_end_ms - clip.dst_start_ms
+        start_f = fps.ms_to_frame(clip.dst_start_ms)
+        end_f = fps.ms_to_frame(clip.dst_end_ms)
+        dst_frames = max(1, end_f - start_f)
         otio_clip = otio.schema.Clip(
             name=clip.shot_id,
             media_reference=video_ref.clone(),
             source_range=otio.opentime.TimeRange(
                 start_time=_ms_to_rt(clip.src_start_ms, fps),
-                duration=_ms_to_rt(dst_dur, fps),
+                duration=_frames_to_rt(dst_frames, fps),
             ),
             metadata={
                 "crop_x_norm": clip.crop_x_norm,
@@ -60,12 +65,13 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
                 otio.schema.LinearTimeWarp(time_scalar=clip.speed)
             )
         if clip.transition == TransitionType.FLASH:
+            flash_frames = max(1, min(dst_frames, fps.ms_to_frame(120)))
             otio_clip.markers.append(
                 otio.schema.Marker(
                     name="FLASH",
                     marked_range=otio.opentime.TimeRange(
                         start_time=_ms_to_rt(clip.src_start_ms, fps),
-                        duration=_ms_to_rt(min(120, dst_dur), fps),
+                        duration=_frames_to_rt(flash_frames, fps),
                     ),
                     color=otio.schema.MarkerColor.WHITE,
                 )

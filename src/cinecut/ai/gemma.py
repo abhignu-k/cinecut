@@ -9,7 +9,11 @@ import httpx
 from pydantic import ValidationError
 
 from cinecut.ai.base import AIBackendError
-from cinecut.ai.prompts import build_editing_prompt, stitch_keyframe_strip
+from cinecut.ai.prompts import (
+    build_editing_prompt,
+    select_representative_shots,
+    stitch_keyframe_strip,
+)
 from cinecut.schemas import AudioAnalysis, EditTimelineDraft, ShotCatalog
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
@@ -57,7 +61,7 @@ class GemmaBackend:
         prompt = build_editing_prompt(audio, catalog, vibe)
         images_b64: list[str] = []
         attached_ids: list[str] = []
-        for shot in catalog.shots[:8]:
+        for shot in select_representative_shots(catalog.shots, limit=8):
             strip = stitch_keyframe_strip(shot.keyframe_paths)
             if strip is not None:
                 images_b64.append(base64.b64encode(strip).decode("ascii"))

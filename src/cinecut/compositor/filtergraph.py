@@ -61,13 +61,15 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
 
     a_start = timeline.audio_start_ms / 1000.0
     a_dur = timeline.audio_duration_ms / 1000.0
-    fade_out_st = max(0.0, a_dur - 0.35)
+    fade_in_d = min(0.15, a_dur / 3.0)
+    fade_out_d = min(0.35, a_dur / 3.0)
+    fade_out_st = max(0.0, a_dur - fade_out_d)
     lines.append(
         f"[1:a]atrim=start={a_start:.6f}:duration={a_dur:.6f},"
         "asetpts=PTS-STARTPTS,"
         "loudnorm=I=-14:TP=-1.0:LRA=11,"
         f"apad,atrim=0:{a_dur:.6f},"
-        "afade=t=in:st=0:d=0.15,"
-        f"afade=t=out:st={fade_out_st:.6f}:d=0.35[aout]"
+        f"afade=t=in:st=0:d={fade_in_d:.6f},"
+        f"afade=t=out:st={fade_out_st:.6f}:d={fade_out_d:.6f}[aout]"
     )
     return "\n".join(lines) + "\n"

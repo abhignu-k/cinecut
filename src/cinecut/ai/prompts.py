@@ -9,7 +9,32 @@ import cv2
 import numpy as np
 
 from cinecut.planner.solver import shift_audio_to_window
-from cinecut.schemas import AudioAnalysis, ShotCatalog
+from cinecut.schemas import AudioAnalysis, ShotCatalog, ShotMetadata
+
+
+def select_representative_shots(
+    shots: list[ShotMetadata], limit: int
+) -> list[ShotMetadata]:
+    """Select diverse + high-energy shots across the whole video."""
+    if limit <= 0 or len(shots) <= limit:
+        return shots[: max(0, limit)]
+
+    n_even = max(1, limit // 2)
+    even_indices = {
+        round(i * (len(shots) - 1) / max(1, n_even - 1)) for i in range(n_even)
+    }
+    ranked_indices = sorted(
+        range(len(shots)),
+        key=lambda i: shots[i].motion_score * (shots[i].sharpness_score + 1.0),
+        reverse=True,
+    )
+    chosen = set(even_indices)
+    for idx in ranked_indices:
+        if len(chosen) >= limit:
+            break
+        chosen.add(idx)
+
+    return [shots[i] for i in sorted(chosen)]
 
 
 def stitch_keyframe_strip(keyframe_paths: list[str]) -> bytes | None:

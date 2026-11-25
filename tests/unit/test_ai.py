@@ -11,7 +11,10 @@ from cinecut.ai.base import AIBackendError
 from cinecut.ai.gemini import GeminiBackend
 from cinecut.ai.gemma import GemmaBackend
 from cinecut.ai.mock import MockBackend
-from cinecut.ai.prompts import stitch_keyframe_strip
+from cinecut.ai.prompts import (
+    select_representative_shots,
+    stitch_keyframe_strip,
+)
 from cinecut.schemas import (
     AudioAnalysis,
     EditTimelineDraft,
@@ -143,3 +146,22 @@ def test_stitch_keyframe_strip(tmp_path: Path) -> None:
     assert stitched is not None
     assert len(stitched) > 100
     assert stitch_keyframe_strip([str(tmp_path / "missing.jpg")]) is None
+
+
+def test_select_representative_shots_covers_late_climax() -> None:
+    shots = [
+        ShotMetadata(
+            shot_id=f"shot_{i:02d}",
+            start_ms=i * 1000,
+            end_ms=(i + 1) * 1000,
+            motion_score=0.95 if i == 18 else 0.1,
+            sharpness_score=100.0 if i == 18 else 50.0,
+        )
+        for i in range(20)
+    ]
+    selected = select_representative_shots(shots, limit=6)
+    ids = [s.shot_id for s in selected]
+    assert len(selected) == 6
+    assert "shot_00" in ids
+    assert "shot_18" in ids
+    assert "shot_19" in ids
