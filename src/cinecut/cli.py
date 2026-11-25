@@ -58,14 +58,17 @@ def _version_callback(value: bool) -> None:
 
 
 def _build_backend(
-    engine: EngineType, local_url: str, local_model: str
+    engine: EngineType,
+    local_url: str,
+    local_model: str,
+    gemini_model: str,
 ) -> AIBackend:
     """Instantiate the requested AI backend."""
     if engine == EngineType.MOCK:
         return MockBackend()
     if engine == EngineType.GEMMA:
         return GemmaBackend(local_url=local_url, model=local_model)
-    return GeminiBackend()
+    return GeminiBackend(model=gemini_model)
 
 
 @app.callback()
@@ -199,6 +202,9 @@ def plan(
     vibe: Annotated[str, typer.Option("--vibe")],
     engine: Annotated[EngineType, typer.Option("--engine")] = EngineType.GEMINI,
     fps: Annotated[int, typer.Option("--fps", min=1, max=120)] = 30,
+    gemini_model: Annotated[
+        str, typer.Option("--gemini-model")
+    ] = "gemini-3.8-flash",
     local_url: Annotated[
         str, typer.Option("--local-url")
     ] = "http://127.0.0.1:11434",
@@ -221,7 +227,7 @@ def plan(
         raise typer.Exit(code=1) from exc
 
     try:
-        backend = _build_backend(engine, local_url, local_model)
+        backend = _build_backend(engine, local_url, local_model, gemini_model)
         draft = backend.generate_draft(audio_analysis, catalog, vibe)
         timeline = solve_timeline(
             draft,
@@ -311,6 +317,9 @@ def edit(
     no_cache: Annotated[bool, typer.Option("--no-cache")] = False,
     dry_run_ffmpeg: Annotated[bool, typer.Option("--dry-run-ffmpeg")] = False,
     videotoolbox: Annotated[bool, typer.Option("--videotoolbox")] = False,
+    gemini_model: Annotated[
+        str, typer.Option("--gemini-model")
+    ] = "gemini-3.8-flash",
     local_url: Annotated[
         str, typer.Option("--local-url")
     ] = "http://127.0.0.1:11434",
@@ -353,7 +362,7 @@ def edit(
         raise typer.Exit(code=1) from exc
 
     try:
-        backend = _build_backend(engine, local_url, local_model)
+        backend = _build_backend(engine, local_url, local_model, gemini_model)
         draft = backend.generate_draft(audio_analysis, catalog, vibe)
         timeline = solve_timeline(
             draft,

@@ -89,9 +89,12 @@ cinecut edit \
   --audio track.mp3 \
   --vibe "underdog pit-lane comeback: tense buildup into rapid overtakes at the drop" \
   --engine gemini \
+  --gemini-model gemini-3.8-flash \
   --out edit.mp4 \
   --otio edit.otio
 ```
+
+*(Defaults to `gemini-3.8-flash`; pass `--gemini-model gemini-4-hydrogen` or `gemini-4-argon` for flagship Gemini 4 reasoning.)*
 
 ### 2. 100% Offline Local Mode (`--engine gemma` via Ollama)
 

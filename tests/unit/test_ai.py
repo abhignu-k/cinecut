@@ -90,13 +90,17 @@ def test_gemini_backend_parses_structured_response() -> None:
         ]
     )
 
+    seen_models: list[object] = []
+
     class FakeModels:
         def generate_content(self, **kwargs: object) -> object:
+            seen_models.append(kwargs.get("model"))
             return SimpleNamespace(text=expected.model_dump_json())
 
     fake_client = SimpleNamespace(models=FakeModels())
-    backend = GeminiBackend(client=fake_client)
+    backend = GeminiBackend(model="gemini-4-hydrogen", client=fake_client)
     draft = backend.generate_draft(audio, catalog, "aggressive overtakes")
+    assert seen_models == ["gemini-4-hydrogen"]
     assert draft.clips[0].shot_id == "shot_0002"
 
 

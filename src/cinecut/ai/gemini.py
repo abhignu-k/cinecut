@@ -23,7 +23,7 @@ class GeminiBackend:
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.8-flash",
         api_key: str | None = None,
         client: Any = None,
     ) -> None:
