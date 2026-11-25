@@ -10,7 +10,7 @@
   - [x] Implement `src/cinecut/__init__.py` and minimal `src/cinecut/cli.py` Typer app until test passes
 - [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
-## Phase 2: Elephant Phase — Architecture Spec, Shared Schemas & Critic Gate
+## Phase 2: Elephant Phase — Architecture Spec, Shared Schemas & Critic Gate [checkpoint: 7299889]
 - [x] Task: Write failing schema and timebase unit tests (TDD Red) (acd0f47)
   - [x] Write tests covering `ProjectConfig`, `MediaInfo`, `AudioAnalysis`, `ShotCatalog`, `EditTimeline` validation, millisecond/rational FPS conversion, and invalid boundary rejections
 - [x] Task: Implement Pydantic v2 schemas and canonical JSON Schema export (TDD Green) (acd0f47)
@@ -18,11 +18,11 @@
   - [x] Author `docs/architecture.md` documenting module boundaries, cache layout, and A/V sync math
 - [x] Task: Run EGM Elephant Gate review on architecture and schemas (7299889)
   - [x] Audit `docs/architecture.md` and `src/cinecut/schemas/` via `egm-design`, `egm-implementation-readiness`, and `egm-zoom-out`, and resolve any blocking design/sync gaps
-- [~] Task: Phase Verification & Checkpoint (Refer to workflow.md)
+- [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
 ## Phase 3: Media Ingest & Musical Audio Parser (`ingest/`, `audio/`)
-- [ ] Task: Implement non-destructive media ingest and VFR-to-CFR normalization (TDD)
-  - [ ] Write failing unit tests for `ffprobe` stream parsing, VFR detection, CFR proxy/WAV extraction commands, and missing `[yt]` extra error reporting
+- [~] Task: Implement non-destructive media ingest and VFR-to-CFR normalization (TDD)
+  - [~] Write failing unit tests for `ffprobe` stream parsing, VFR detection, CFR proxy/WAV extraction commands, and missing `[yt]` extra error reporting
   - [ ] Implement `src/cinecut/ingest/` (`probe.py`, `prepare.py`, `youtube.py` optional wrapper) and verify tests + >80% coverage
 - [ ] Task: Implement musical structure, beat grid, highlight windowing & optional stems (TDD)
   - [ ] Write failing unit tests for `librosa` beat/downbeat/section parsing, 30s buildup-to-drop window auto-selection, `--audio-start`/`--duration`/`--full-audio`, and optional `demucs` stem curve integration
