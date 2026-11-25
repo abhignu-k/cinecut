@@ -93,7 +93,11 @@ def build_editing_prompt(
         "EditTimelineDraft where dst_start_ms/dst_end_ms are window-relative "
         "[0, window_duration_ms] contiguously, and src_start_ms/src_end_ms "
         "are source-video-relative within each chosen shot's [start_ms, "
-        "end_ms]. Match high-motion shots to drop/climax sections and slower "
-        "setup shots to intro/buildup. Cut on beats_ms. Input context:\n"
+        "end_ms]. Prefer clean action, tracking, onboard, and atmospheric "
+        "shots; AVOID shots dominated by broadcast HUDs, driver nameplates, "
+        "leaderboards, or static text overlays. Use longer slow-mo holds "
+        "(speed 0.65-0.85, 1.5s-3.5s) for setup/buildup, and crisp "
+        "beat-synced cuts (0.5s-1.2s) with zoom_punch/flash on drop/climax "
+        "sections. Cut on beats_ms. Input context:\n"
         + json.dumps(payload, indent=2)
     )

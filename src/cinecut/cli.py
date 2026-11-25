@@ -44,6 +44,7 @@ from cinecut.schemas import (
     AudioAnalysis,
     EditTimeline,
     EngineType,
+    FramingMode,
     RationalFPS,
     ShotCatalog,
 )
@@ -132,7 +133,7 @@ def analyze(
     ] = None,
     duration: Annotated[
         float, typer.Option("--duration", min=0.25, help="Target sec.")
-    ] = 30.0,
+    ] = 45.0,
     full_audio: Annotated[
         bool, typer.Option("--full-audio", help="Use full audio track.")
     ] = False,
@@ -210,6 +211,9 @@ def plan(
     vibe: Annotated[str, typer.Option("--vibe")],
     engine: Annotated[EngineType, typer.Option("--engine")] = EngineType.GEMINI,
     fps: Annotated[int, typer.Option("--fps", min=1, max=120)] = 30,
+    framing: Annotated[
+        FramingMode, typer.Option("--framing")
+    ] = FramingMode.BLUR,
     gemini_model: Annotated[
         str, typer.Option("--gemini-model")
     ] = "gemini-3.8-flash",
@@ -245,6 +249,7 @@ def plan(
             render_video_path=render_video,
             audio_path=audio_wav,
             target_fps=RationalFPS(num=fps, den=1),
+            framing=framing,
         )
     except (AIBackendError, PlannerError) as exc:
         typer.echo(f"Planning error: {exc}", err=True)
@@ -312,9 +317,12 @@ def edit(
     engine: Annotated[EngineType, typer.Option("--engine")] = EngineType.GEMINI,
     stems: Annotated[bool, typer.Option("--stems")] = False,
     audio_start: Annotated[float | None, typer.Option("--audio-start")] = None,
-    duration: Annotated[float, typer.Option("--duration", min=0.25)] = 30.0,
+    duration: Annotated[float, typer.Option("--duration", min=0.25)] = 45.0,
     full_audio: Annotated[bool, typer.Option("--full-audio")] = False,
     fps: Annotated[int, typer.Option("--fps", min=1, max=120)] = 30,
+    framing: Annotated[
+        FramingMode, typer.Option("--framing")
+    ] = FramingMode.BLUR,
     out: Annotated[Path, typer.Option("--out")] = Path("cinecut_edit.mp4"),
     otio_out: Annotated[Path, typer.Option("--otio")] = Path(
         "cinecut_edit.otio"
@@ -419,6 +427,7 @@ def edit(
                 render_video_path=render_video,
                 audio_path=wav_path,
                 target_fps=RationalFPS(num=fps, den=1),
+                framing=framing,
             )
         except (AIBackendError, PlannerError) as exc:
             progress.stop()

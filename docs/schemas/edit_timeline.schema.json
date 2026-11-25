@@ -9,6 +9,16 @@
       "title": "EffectType",
       "type": "string"
     },
+    "FramingMode": {
+      "description": "Vertical 9:16 framing strategy for source footage.",
+      "enum": [
+        "blur",
+        "cinema",
+        "crop"
+      ],
+      "title": "FramingMode",
+      "type": "string"
+    },
     "NarrativeRole": {
       "description": "Story arc role assigned to a timeline clip.",
       "enum": [
@@ -147,6 +157,10 @@
       "minItems": 1,
       "title": "Clips",
       "type": "array"
+    },
+    "framing": {
+      "$ref": "#/$defs/FramingMode",
+      "default": "blur"
     },
     "height": {
       "default": 1920,

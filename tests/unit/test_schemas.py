@@ -47,7 +47,7 @@ def test_project_config_and_media_info_validation() -> None:
         vibe="underdog wet-weather comeback",
         engine=EngineType.MOCK,
     )
-    assert cfg.duration_ms == 30_000
+    assert cfg.duration_ms == 45_000
     assert cfg.target_fps.as_float() == 30.0
 
     with pytest.raises(ValidationError):

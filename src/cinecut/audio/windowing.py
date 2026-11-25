@@ -66,7 +66,7 @@ def select_highlight_window(
 
     for cand_start in candidates:
         cand_end = cand_start + target_duration_ms
-        mid = cand_start + round(target_duration_ms * 0.4)
+        mid = cand_start + round(target_duration_ms * 0.25)
         first_e = _window_mean_energy(sections, cand_start, mid)
         second_e = _window_mean_energy(sections, mid, cand_end)
         mean_e = _window_mean_energy(sections, cand_start, cand_end)

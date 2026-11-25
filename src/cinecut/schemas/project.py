@@ -26,7 +26,7 @@ class ProjectConfig(BaseModel):
     engine: EngineType = EngineType.GEMINI
     stems: bool = False
     audio_start_ms: int | None = Field(default=None, ge=0)
-    duration_ms: int = Field(default=30_000, gt=0)
+    duration_ms: int = Field(default=45_000, gt=0)
     full_audio: bool = False
     target_fps: RationalFPS = Field(
         default_factory=lambda: RationalFPS(num=30, den=1)

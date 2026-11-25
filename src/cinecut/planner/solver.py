@@ -9,6 +9,7 @@ from cinecut.schemas import (
     AudioAnalysis,
     EditTimeline,
     EditTimelineDraft,
+    FramingMode,
     RationalFPS,
     ShotCatalog,
     ShotMetadata,
@@ -118,6 +119,7 @@ def solve_timeline(
     render_video_path: Path,
     audio_path: Path,
     target_fps: RationalFPS,
+    framing: FramingMode = FramingMode.BLUR,
     beat_snap_tolerance_ms: int = 60,
     min_clip_ms: int = 250,
 ) -> EditTimeline:
@@ -131,6 +133,7 @@ def solve_timeline(
         render_video_path: Normalized CFR proxy or video path (for FFmpeg).
         audio_path: Extracted 48kHz WAV audio path.
         target_fps: Output rational frame rate.
+        framing: Vertical framing strategy (`blur`, `cinema`, or `crop`).
         beat_snap_tolerance_ms: Max distance to snap cut points to beats.
         min_clip_ms: Minimum allowed destination clip duration (>= 250).
 
@@ -211,6 +214,7 @@ def solve_timeline(
         render_video_path=str(render_video_path),
         audio_path=str(audio_path),
         target_fps=target_fps,
+        framing=framing,
         audio_start_ms=audio.selected_window_start_ms,
         audio_duration_ms=audio_dur,
         clips=solved_clips,

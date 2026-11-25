@@ -16,6 +16,14 @@ class TransitionType(StrEnum):
     FLASH = "flash"
 
 
+class FramingMode(StrEnum):
+    """Vertical 9:16 framing strategy for source footage."""
+
+    BLUR = "blur"
+    CINEMA = "cinema"
+    CROP = "crop"
+
+
 class EffectType(StrEnum):
     """Per-clip kinetic post-processing effects supported in v0.1."""
 
@@ -96,6 +104,7 @@ class EditTimeline(BaseModel):
     target_fps: RationalFPS
     width: int = Field(default=1080, gt=0)
     height: int = Field(default=1920, gt=0)
+    framing: FramingMode = FramingMode.BLUR
     audio_start_ms: int = Field(ge=0)
     audio_duration_ms: int = Field(gt=0)
     clips: list[TimelineClip] = Field(min_length=1)

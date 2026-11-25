@@ -55,7 +55,7 @@
       "title": "Audio Start Ms"
     },
     "duration_ms": {
-      "default": 30000,
+      "default": 45000,
       "exclusiveMinimum": 0,
       "title": "Duration Ms",
       "type": "integer"

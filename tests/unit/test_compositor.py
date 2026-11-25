@@ -12,6 +12,7 @@ from cinecut.compositor import (
 from cinecut.schemas import (
     EditTimeline,
     EffectType,
+    FramingMode,
     NarrativeRole,
     RationalFPS,
     TimelineClip,
@@ -19,12 +20,15 @@ from cinecut.schemas import (
 )
 
 
-def _sample_timeline(tmp_path: Path) -> EditTimeline:
+def _sample_timeline(
+    tmp_path: Path, framing: FramingMode = FramingMode.BLUR
+) -> EditTimeline:
     return EditTimeline(
         source_video_path=str(tmp_path / "raw.mp4"),
         render_video_path=str(tmp_path / "proxy.mp4"),
         audio_path=str(tmp_path / "audio.wav"),
         target_fps=RationalFPS(num=30, den=1),
+        framing=framing,
         audio_start_ms=1000,
         audio_duration_ms=2000,
         clips=[
@@ -59,15 +63,24 @@ def _sample_timeline(tmp_path: Path) -> EditTimeline:
 def test_build_filter_complex_script_contains_effects_and_sync(
     tmp_path: Path,
 ) -> None:
-    tl = _sample_timeline(tmp_path)
-    script = build_filter_complex_script(tl)
-    assert "crop=" in script
-    assert "scale=1080:1920:flags=lanczos,setsar=1" in script
-    assert "eq=brightness=" in script
-    assert ":eval=frame" in script
-    assert "concat=n=2:v=1:a=0,fps=30/1,settb=AVTB[vout]" in script
-    assert "loudnorm" in script
-    assert "apad,atrim=0:2.000000" in script
+    tl_blur = _sample_timeline(tmp_path, FramingMode.BLUR)
+    script_blur = build_filter_complex_script(tl_blur)
+    assert "boxblur=25:2" in script_blur
+    assert "vignette=PI/5" in script_blur
+    assert "overlay=(W-w)/2:(H-h)/2:shortest=1" in script_blur
+    assert "eq=brightness=" in script_blur
+    assert ":eval=frame" in script_blur
+    assert "concat=n=2:v=1:a=0,fps=30/1,settb=AVTB[vout]" in script_blur
+    assert "loudnorm" in script_blur
+    assert "apad,atrim=0:2.000000" in script_blur
+
+    tl_crop = _sample_timeline(tmp_path, FramingMode.CROP)
+    script_crop = build_filter_complex_script(tl_crop)
+    assert "scale=1080:1920:flags=lanczos,setsar=1" in script_crop
+
+    tl_cinema = _sample_timeline(tmp_path, FramingMode.CINEMA)
+    script_cinema = build_filter_complex_script(tl_cinema)
+    assert "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black" in script_cinema
 
 
 def test_render_timeline_dry_run_and_error(

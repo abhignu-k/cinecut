@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from cinecut.schemas import EditTimeline, EffectType, TransitionType
+from cinecut.schemas import (
+    EditTimeline,
+    EffectType,
+    FramingMode,
+    TransitionType,
+)
 
 
 def build_filter_complex_script(timeline: EditTimeline) -> str:
@@ -26,32 +31,71 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
         label = f"[v{idx}]"
         video_labels.append(label)
 
-        filters: list[str] = [
+        base: list[str] = [
             f"trim=start={src_s:.6f}:end={src_e:.6f}",
             f"setpts=(PTS-STARTPTS)/{clip.speed:.6f}",
             "scale=iw*sar:ih,setsar=1",
-            (
-                "crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':"
-                f"x='(iw-ow)*{clip.crop_x_norm:.4f}':y='(ih-oh)/2'"
-            ),
-            f"scale={width}:{height}:flags=lanczos,setsar=1",
+            "eq=contrast=1.08:saturation=1.12:brightness=-0.02",
+            "vignette=PI/5",
         ]
 
-        if clip.effect == EffectType.ZOOM_PUNCH:
-            filters.append(
-                "scale=w='iw*(1+0.08*max(0,1-t/0.25))':"
-                "h='ih*(1+0.08*max(0,1-t/0.25))':eval=frame:flags=lanczos"
-            )
-            filters.append(
-                f"crop=w={width}:h={height}:x='(iw-ow)/2':y='(ih-oh)/2',setsar=1"
-            )
-
         if clip.transition == TransitionType.FLASH:
-            filters.append("eq=brightness='0.45*max(0,1-t/0.12)':eval=frame")
+            base.append("eq=brightness='0.45*max(0,1-t/0.12)':eval=frame")
 
-        filters.append("settb=AVTB")
-        chain = ",".join(filters)
-        lines.append(f"[0:v]{chain}{label};")
+        if timeline.framing == FramingMode.CROP:
+            base.append(
+                "crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':"
+                f"x='(iw-ow)*{clip.crop_x_norm:.4f}':y='(ih-oh)/2'"
+            )
+            base.append(f"scale={width}:{height}:flags=lanczos,setsar=1")
+            if clip.effect == EffectType.ZOOM_PUNCH:
+                base.append(
+                    "scale=w='iw*(1+0.08*max(0,1-t/0.25))':"
+                    "h='ih*(1+0.08*max(0,1-t/0.25))':eval=frame:flags=lanczos"
+                )
+                base.append(
+                    f"crop=w={width}:h={height}:"
+                    "x='(iw-ow)/2':y='(ih-oh)/2',setsar=1"
+                )
+            base.append("settb=AVTB")
+            lines.append(f"[0:v]{','.join(base)}{label};")
+        elif timeline.framing == FramingMode.CINEMA:
+            base.append(
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease:"
+                "flags=lanczos,setsar=1"
+            )
+            base.append(
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,settb=AVTB"
+            )
+            lines.append(f"[0:v]{','.join(base)}{label};")
+        else:
+            # FramingMode.BLUR: full widescreen over dark blurred backdrop.
+            fg_lbl = f"[fg{idx}]"
+            bg_lbl = f"[bg{idx}]"
+            fgs_lbl = f"[fgs{idx}]"
+            bgf_lbl = f"[bgf{idx}]"
+            lines.append(f"[0:v]{','.join(base)},split=2{fg_lbl}{bg_lbl};")
+            lines.append(
+                f"{bg_lbl}crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':"
+                "x='(iw-ow)/2':y='(ih-oh)/2',"
+                f"scale={width}:{height}:flags=bilinear,"
+                "boxblur=25:2,eq=brightness=-0.28,setsar=1"
+                f"{bgf_lbl};"
+            )
+            fg_scale = (
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease:"
+                "flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1"
+            )
+            if clip.effect == EffectType.ZOOM_PUNCH:
+                fg_scale += (
+                    ",scale=w='iw*(1+0.06*max(0,1-t/0.25))':"
+                    "h='ih*(1+0.06*max(0,1-t/0.25))':eval=frame:flags=lanczos"
+                )
+            lines.append(f"{fg_lbl}{fg_scale}{fgs_lbl};")
+            lines.append(
+                f"{bgf_lbl}{fgs_lbl}overlay=(W-w)/2:(H-h)/2:shortest=1,"
+                f"settb=AVTB{label};"
+            )
 
     concat_in = "".join(video_labels)
     lines.append(
