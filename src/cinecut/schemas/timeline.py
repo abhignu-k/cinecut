@@ -37,9 +37,9 @@ class TimelineClipDraft(BaseModel):
 
     shot_id: str = Field(min_length=1)
     src_start_ms: int = Field(ge=0)
-    src_end_ms: int = Field(gt=0)
+    src_end_ms: int = Field(ge=1)
     dst_start_ms: int = Field(ge=0)
-    dst_end_ms: int = Field(gt=0)
+    dst_end_ms: int = Field(ge=1)
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     transition: TransitionType = TransitionType.CUT
     effect: EffectType = EffectType.NONE
@@ -58,9 +58,9 @@ class TimelineClip(BaseModel):
 
     shot_id: str = Field(min_length=1)
     src_start_ms: int = Field(ge=0)
-    src_end_ms: int = Field(gt=0)
+    src_end_ms: int = Field(ge=1)
     dst_start_ms: int = Field(ge=0)
-    dst_end_ms: int = Field(gt=0)
+    dst_end_ms: int = Field(ge=1)
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     crop_x_norm: float = Field(default=0.5, ge=0.0, le=1.0)
     transition: TransitionType = TransitionType.CUT

@@ -76,6 +76,15 @@ def test_mock_backend_generates_valid_draft() -> None:
     assert draft.clips[-1].dst_end_ms == 4000
 
 
+def test_gemini_response_schema_is_sdk_compatible() -> None:
+    from google.genai import Client
+    from google.genai import _transformers as t
+
+    client = Client(api_key="dummy-key")
+    schema = t.t_schema(client._api_client, EditTimelineDraft)
+    assert schema is not None
+
+
 def test_gemini_backend_parses_structured_response() -> None:
     audio, catalog = _sample_inputs()
     expected = EditTimelineDraft(

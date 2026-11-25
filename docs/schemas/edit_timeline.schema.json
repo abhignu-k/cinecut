@@ -54,7 +54,7 @@
           "type": "number"
         },
         "dst_end_ms": {
-          "exclusiveMinimum": 0,
+          "minimum": 1,
           "title": "Dst End Ms",
           "type": "integer"
         },
@@ -89,7 +89,7 @@
           "type": "number"
         },
         "src_end_ms": {
-          "exclusiveMinimum": 0,
+          "minimum": 1,
           "title": "Src End Ms",
           "type": "integer"
         },

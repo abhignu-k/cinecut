@@ -57,14 +57,19 @@ class GeminiBackend:
                     types.Part.from_bytes(data=strip, mime_type="image/jpeg")
                 )
 
-        response = self._client.models.generate_content(
-            model=self.model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=EditTimelineDraft,
-            ),
-        )
+        try:
+            response = self._client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=EditTimelineDraft,
+                ),
+            )
+        except Exception as exc:
+            raise AIBackendError(
+                f"Gemini API request failed ({self.model}): {exc}"
+            ) from exc
         raw_text = getattr(response, "text", None) or ""
         try:
             return EditTimelineDraft.model_validate_json(raw_text)
