@@ -29,7 +29,6 @@ class MockBackend:
         win_beats, win_sections = shift_audio_to_window(audio)
         win_dur = audio.selected_window_end_ms - audio.selected_window_start_ms
 
-        # Build cut boundaries >= 400ms apart along beats.
         cuts: list[int] = [0]
         for b in win_beats:
             if b - cuts[-1] >= 400 and win_dur - b >= 400:
@@ -43,6 +42,7 @@ class MockBackend:
         )
         clips: list[TimelineClipDraft] = []
         n_shots = len(shots_by_motion)
+        prev_shot_id: str | None = None
 
         for idx, (dst_s, dst_e) in enumerate(zip(cuts, cuts[1:], strict=False)):
             mid = (dst_s + dst_e) // 2
@@ -53,9 +53,10 @@ class MockBackend:
             label = sec.label if sec else SectionLabel.DROP
 
             if label in (SectionLabel.DROP, SectionLabel.BUILDUP):
-                shot: ShotMetadata = shots_by_motion[
-                    n_shots - 1 - (idx % n_shots)
-                ]
+                cand_idx = n_shots - 1 - (idx % n_shots)
+                shot: ShotMetadata = shots_by_motion[cand_idx]
+                if n_shots > 1 and shot.shot_id == prev_shot_id:
+                    shot = shots_by_motion[(cand_idx - 1) % n_shots]
                 role = (
                     NarrativeRole.CLIMAX
                     if label == SectionLabel.DROP
@@ -72,7 +73,10 @@ class MockBackend:
                     else TransitionType.CUT
                 )
             else:
-                shot = shots_by_motion[idx % n_shots]
+                cand_idx = idx % n_shots
+                shot = shots_by_motion[cand_idx]
+                if n_shots > 1 and shot.shot_id == prev_shot_id:
+                    shot = shots_by_motion[(cand_idx + 1) % n_shots]
                 role = (
                     NarrativeRole.SETUP
                     if label == SectionLabel.INTRO
@@ -81,6 +85,7 @@ class MockBackend:
                 effect = EffectType.NONE
                 trans = TransitionType.CUT
 
+            prev_shot_id = shot.shot_id
             dst_dur = dst_e - dst_s
             shot_dur = shot.end_ms - shot.start_ms
             speed = (

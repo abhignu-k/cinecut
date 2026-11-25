@@ -6,12 +6,14 @@ from pathlib import Path
 
 import opentimelineio as otio
 
-from cinecut.schemas import EditTimeline, TransitionType
+from cinecut.schemas import EditTimeline, RationalFPS, TransitionType
 
 
-def _ms_to_rt(ms: int) -> otio.opentime.RationalTime:
-    """Convert integer milliseconds to OTIO RationalTime at 1000 Hz."""
-    return otio.opentime.RationalTime(float(ms), 1000.0)
+def _ms_to_rt(ms: int, fps: RationalFPS) -> otio.opentime.RationalTime:
+    """Convert integer milliseconds to frame-rate RationalTime."""
+    rate = fps.as_float()
+    frames = round((ms * rate) / 1000.0)
+    return otio.opentime.RationalTime(float(frames), rate)
 
 
 def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
@@ -25,7 +27,11 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
         Path to the written `.otio` file.
     """
     output_otio.parent.mkdir(parents=True, exist_ok=True)
-    otio_tl = otio.schema.Timeline(name="cinecut_edit")
+    fps = timeline.target_fps
+    otio_tl = otio.schema.Timeline(
+        name="cinecut_edit",
+        global_start_time=_ms_to_rt(0, fps),
+    )
 
     video_track = otio.schema.Track(
         name="Video", kind=otio.schema.TrackKind.Video
@@ -34,13 +40,13 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
     video_ref = otio.schema.ExternalReference(target_url=video_uri)
 
     for clip in timeline.clips:
-        src_dur = clip.src_end_ms - clip.src_start_ms
+        dst_dur = clip.dst_end_ms - clip.dst_start_ms
         otio_clip = otio.schema.Clip(
             name=clip.shot_id,
             media_reference=video_ref.clone(),
             source_range=otio.opentime.TimeRange(
-                start_time=_ms_to_rt(clip.src_start_ms),
-                duration=_ms_to_rt(src_dur),
+                start_time=_ms_to_rt(clip.src_start_ms, fps),
+                duration=_ms_to_rt(dst_dur, fps),
             ),
             metadata={
                 "crop_x_norm": clip.crop_x_norm,
@@ -58,8 +64,8 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
                 otio.schema.Marker(
                     name="FLASH",
                     marked_range=otio.opentime.TimeRange(
-                        start_time=_ms_to_rt(clip.src_start_ms),
-                        duration=_ms_to_rt(min(120, src_dur)),
+                        start_time=_ms_to_rt(clip.src_start_ms, fps),
+                        duration=_ms_to_rt(min(120, dst_dur), fps),
                     ),
                     color=otio.schema.MarkerColor.WHITE,
                 )
@@ -76,8 +82,8 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
             name="Music",
             media_reference=audio_ref,
             source_range=otio.opentime.TimeRange(
-                start_time=_ms_to_rt(timeline.audio_start_ms),
-                duration=_ms_to_rt(timeline.audio_duration_ms),
+                start_time=_ms_to_rt(timeline.audio_start_ms, fps),
+                duration=_ms_to_rt(timeline.audio_duration_ms, fps),
             ),
         )
     )

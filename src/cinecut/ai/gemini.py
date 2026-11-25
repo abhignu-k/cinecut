@@ -48,6 +48,7 @@ class GeminiBackend:
         for shot in catalog.shots[:12]:
             strip = stitch_keyframe_strip(shot.keyframe_paths)
             if strip is not None:
+                contents.append(f"Shot {shot.shot_id}:")
                 contents.append(
                     types.Part.from_bytes(data=strip, mime_type="image/jpeg")
                 )

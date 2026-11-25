@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from cinecut.schemas import (
@@ -77,35 +78,34 @@ def _fit_source_span(
 ) -> tuple[int, int, float]:
     """Compute valid `(src_start_ms, src_end_ms, speed)` within shot bounds."""
     shot_dur = shot.end_ms - shot.start_ms
+    min_src = max(1, math.ceil(dst_dur_ms * 0.25))
+    max_src = max(min_src, math.floor(dst_dur_ms * 4.0))
     speed = min(4.0, max(0.25, draft_clip.speed))
+    desired_src_dur = min(max_src, max(min_src, round(dst_dur_ms * speed)))
+
     src_start = max(
         shot.start_ms, min(draft_clip.src_start_ms, shot.end_ms - 1)
     )
-    desired_src_dur = max(1, round(dst_dur_ms * speed))
-
     avail_from_start = shot.end_ms - src_start
     if avail_from_start >= desired_src_dur:
         src_end = src_start + desired_src_dur
         exact_speed = (src_end - src_start) / dst_dur_ms
         return src_start, src_end, exact_speed
 
-    # Shift src_start earlier inside the shot if possible.
     if shot_dur >= desired_src_dur:
         src_end = shot.end_ms
         src_start = src_end - desired_src_dur
         exact_speed = (src_end - src_start) / dst_dur_ms
         return src_start, src_end, exact_speed
 
-    # Shot is shorter than desired_src_dur; slow down within [0.25, 4.0].
-    min_needed_src = max(1, round(dst_dur_ms * 0.25))
-    if shot_dur < min_needed_src:
+    if shot_dur < min_src:
         raise PlannerError(
             f"Shot {shot.shot_id} ({shot_dur}ms) too short for "
             f"{dst_dur_ms}ms output clip at min 0.25x speed."
         )
     src_start = shot.start_ms
     src_end = shot.end_ms
-    exact_speed = shot_dur / dst_dur_ms
+    exact_speed = min(4.0, max(0.25, shot_dur / dst_dur_ms))
     return src_start, src_end, exact_speed
 
 
@@ -132,7 +132,7 @@ def solve_timeline(
         audio_path: Extracted 48kHz WAV audio path.
         target_fps: Output rational frame rate.
         beat_snap_tolerance_ms: Max distance to snap cut points to beats.
-        min_clip_ms: Minimum allowed destination clip duration.
+        min_clip_ms: Minimum allowed destination clip duration (>= 250).
 
     Returns:
         Strictly validated `EditTimeline`.
@@ -140,16 +140,21 @@ def solve_timeline(
     Raises:
         PlannerError: If draft references unknown shots or violates invariants.
     """
+    if min_clip_ms < 250:
+        raise PlannerError("min_clip_ms must be at least 250ms.")
+
     shot_by_id = {s.shot_id: s for s in catalog.shots}
     win_beats, _ = shift_audio_to_window(audio)
     audio_dur = audio.selected_window_end_ms - audio.selected_window_start_ms
+    if audio_dur < min_clip_ms:
+        raise PlannerError(
+            f"Selected audio window ({audio_dur}ms) < min_clip_ms."
+        )
 
-    # Validate shot IDs upfront.
     for clip in draft.clips:
         if clip.shot_id not in shot_by_id:
             raise PlannerError(f"Unknown shot_id in draft: {clip.shot_id}")
 
-    # Filter/merge clips so output spans remain >= min_clip_ms.
     raw_clips = list(draft.clips)
     solved_clips: list[TimelineClip] = []
     cur_dst = 0

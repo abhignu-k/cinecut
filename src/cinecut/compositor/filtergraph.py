@@ -15,8 +15,8 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
         Multi-line FFmpeg script suitable for `-filter_complex_script`.
     """
     fps_expr = f"{timeline.target_fps.num}/{timeline.target_fps.den}"
-    width = timeline.width
-    height = timeline.height
+    width = timeline.width - (timeline.width % 2)
+    height = timeline.height - (timeline.height % 2)
     lines: list[str] = []
     video_labels: list[str] = []
 
@@ -29,6 +29,7 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
         filters: list[str] = [
             f"trim=start={src_s:.6f}:end={src_e:.6f}",
             f"setpts=(PTS-STARTPTS)/{clip.speed:.6f}",
+            "scale=iw*sar:ih,setsar=1",
             (
                 "crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':"
                 f"x='(iw-ow)*{clip.crop_x_norm:.4f}':y='(ih-oh)/2'"
@@ -38,21 +39,25 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
 
         if clip.effect == EffectType.ZOOM_PUNCH:
             filters.append(
-                "crop=w='iw*(1-0.08*max(0,1-t/0.25))':"
-                "h='ih*(1-0.08*max(0,1-t/0.25))':"
-                "x='(iw-ow)/2':y='(ih-oh)/2'"
+                "scale=w='iw*(1+0.08*max(0,1-t/0.25))':"
+                "h='ih*(1+0.08*max(0,1-t/0.25))':eval=frame:flags=lanczos"
             )
-            filters.append(f"scale={width}:{height}:flags=lanczos,setsar=1")
+            filters.append(
+                f"crop=w={width}:h={height}:x='(iw-ow)/2':y='(ih-oh)/2',setsar=1"
+            )
 
         if clip.transition == TransitionType.FLASH:
-            filters.append("eq=brightness='0.45*max(0,1-t/0.12)'")
+            filters.append("eq=brightness='0.45*max(0,1-t/0.12)':eval=frame")
 
-        filters.append(f"fps={fps_expr},settb=AVTB")
+        filters.append("settb=AVTB")
         chain = ",".join(filters)
         lines.append(f"[0:v]{chain}{label};")
 
     concat_in = "".join(video_labels)
-    lines.append(f"{concat_in}concat=n={len(video_labels)}:v=1:a=0[vout];")
+    lines.append(
+        f"{concat_in}concat=n={len(video_labels)}:v=1:a=0,"
+        f"fps={fps_expr},settb=AVTB[vout];"
+    )
 
     a_start = timeline.audio_start_ms / 1000.0
     a_dur = timeline.audio_duration_ms / 1000.0
@@ -61,8 +66,8 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
         f"[1:a]atrim=start={a_start:.6f}:duration={a_dur:.6f},"
         "asetpts=PTS-STARTPTS,"
         "loudnorm=I=-14:TP=-1.0:LRA=11,"
+        f"apad,atrim=0:{a_dur:.6f},"
         "afade=t=in:st=0:d=0.15,"
-        f"afade=t=out:st={fade_out_st:.6f}:d=0.35,"
-        f"apad,atrim=0:{a_dur:.6f}[aout]"
+        f"afade=t=out:st={fade_out_st:.6f}:d=0.35[aout]"
     )
     return "\n".join(lines) + "\n"

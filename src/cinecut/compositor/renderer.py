@@ -50,6 +50,7 @@ def render_timeline(
     )
     cmd = [
         "ffmpeg",
+        "-nostdin",
         "-y",
         "-i",
         timeline.render_video_path,
@@ -68,6 +69,8 @@ def render_timeline(
         "yuv420p",
         "-c:a",
         "aac",
+        "-ar",
+        "48000",
         "-b:a",
         "192k",
         "-movflags",

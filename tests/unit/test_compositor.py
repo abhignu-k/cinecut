@@ -64,10 +64,10 @@ def test_build_filter_complex_script_contains_effects_and_sync(
     assert "crop=" in script
     assert "scale=1080:1920:flags=lanczos,setsar=1" in script
     assert "eq=brightness=" in script
-    assert "fps=30/1,settb=AVTB" in script
-    assert "concat=n=2:v=1:a=0[vout]" in script
+    assert ":eval=frame" in script
+    assert "concat=n=2:v=1:a=0,fps=30/1,settb=AVTB[vout]" in script
     assert "loudnorm" in script
-    assert "apad,atrim=0:2.000000[aout]" in script
+    assert "apad,atrim=0:2.000000" in script
 
 
 def test_render_timeline_dry_run_and_error(

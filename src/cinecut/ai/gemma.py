@@ -16,15 +16,13 @@ _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def _validate_local_url(url: str) -> str:
-    """Enforce strictly local/loopback URLs under `--engine gemma`."""
+    """Enforce strictly loopback URLs under `--engine gemma`."""
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower()
-    if parsed.scheme not in ("http", "https") or (
-        host not in _LOCAL_HOSTS and not host.endswith(".local")
-    ):
+    if parsed.scheme not in ("http", "https") or host not in _LOCAL_HOSTS:
         raise AIBackendError(
             f"Refusing non-local URL under --engine gemma: {url!r}. "
-            "Use localhost/127.0.0.1/::1."
+            "Use localhost, 127.0.0.1, or ::1."
         )
     return url.rstrip("/")
 
@@ -40,10 +38,14 @@ class GemmaBackend:
         max_retries: int = 2,
     ) -> None:
         """Initialize GemmaBackend with strict local-only URL validation."""
+        if max_retries < 0:
+            raise ValueError("max_retries must be >= 0.")
         self.base_url = _validate_local_url(local_url)
         self.model = model
         self.max_retries = max_retries
-        self._client = client or httpx.Client(timeout=120.0)
+        self._client = client or httpx.Client(
+            timeout=120.0, trust_env=False, follow_redirects=False
+        )
 
     def generate_draft(
         self,
@@ -54,15 +56,23 @@ class GemmaBackend:
         """Query local Ollama `/api/chat` with bounded JSON repair retries."""
         prompt = build_editing_prompt(audio, catalog, vibe)
         images_b64: list[str] = []
+        attached_ids: list[str] = []
         for shot in catalog.shots[:8]:
             strip = stitch_keyframe_strip(shot.keyframe_paths)
             if strip is not None:
                 images_b64.append(base64.b64encode(strip).decode("ascii"))
+                attached_ids.append(shot.shot_id)
+
+        full_prompt = prompt
+        if attached_ids:
+            full_prompt += "\nAttached keyframe strips order: " + ", ".join(
+                attached_ids
+            )
 
         messages: list[dict[str, object]] = [
             {
                 "role": "user",
-                "content": prompt,
+                "content": full_prompt,
                 **({"images": images_b64} if images_b64 else {}),
             }
         ]
@@ -81,25 +91,33 @@ class GemmaBackend:
                     f"{self.base_url}/api/chat", json=payload
                 )
                 resp.raise_for_status()
-            except httpx.HTTPError as exc:
+                body = resp.json()
+                message = body.get("message")
+                if not isinstance(message, dict):
+                    raise AIBackendError(
+                        "Unexpected Ollama response shape (missing message)."
+                    )
+                content = str(message.get("content", ""))
+            except (httpx.HTTPError, ValueError, AttributeError) as exc:
                 raise AIBackendError(
                     f"Local Gemma server error at {self.base_url}: {exc}"
                 ) from exc
 
-            content = str(resp.json().get("message", {}).get("content", ""))
             try:
                 return EditTimelineDraft.model_validate_json(content)
             except ValidationError as exc:
                 last_err = exc
                 if attempt < self.max_retries:
-                    messages.append({"role": "assistant", "content": content})
+                    messages.append(
+                        {"role": "assistant", "content": content[:500]}
+                    )
                     messages.append(
                         {
                             "role": "user",
                             "content": (
                                 "Your JSON failed schema validation: "
-                                f"{exc}. Return ONLY valid JSON matching "
-                                "EditTimelineDraft."
+                                f"{str(exc)[:300]}. Return ONLY valid JSON "
+                                "matching EditTimelineDraft."
                             ),
                         }
                     )

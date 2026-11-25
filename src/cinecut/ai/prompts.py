@@ -65,8 +65,10 @@ def build_editing_prompt(
     }
     return (
         "You are a cinematic vertical video editor. Create an "
-        "EditTimelineDraft covering [0, window_duration_ms] contiguously. "
-        "Match high-motion shots to drop/climax sections and slower setup "
-        "shots to intro/buildup. Cut on beats_ms. Input context:\n"
+        "EditTimelineDraft where dst_start_ms/dst_end_ms are window-relative "
+        "[0, window_duration_ms] contiguously, and src_start_ms/src_end_ms "
+        "are source-video-relative within each chosen shot's [start_ms, "
+        "end_ms]. Match high-motion shots to drop/climax sections and slower "
+        "setup shots to intro/buildup. Cut on beats_ms. Input context:\n"
         + json.dumps(payload, indent=2)
     )

@@ -39,4 +39,6 @@ jobs:
         run: mypy src tests
 
       - name: Test with coverage
+        env:
+          NUMBA_CACHE_DIR: /tmp/numba_cache
         run: CI=true pytest --cov=cinecut --cov-fail-under=80
