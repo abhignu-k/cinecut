@@ -8,6 +8,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 
 from cinecut.planner.solver import shift_audio_to_window
 from cinecut.schemas import AudioAnalysis, ShotCatalog, ShotMetadata
@@ -60,13 +61,16 @@ def select_representative_shots(
 
 def _fit_tile(
     img: cv2.typing.MatLike, tile_w: int, tile_h: int
-) -> cv2.typing.MatLike:
+) -> npt.NDArray[np.uint8]:
     """Resize/pad image into a `(tile_h, tile_w)` BGR canvas."""
-    h, w = img.shape[:2]
+    arr = np.asarray(img, dtype=np.uint8)
+    h, w = arr.shape[:2]
     scale = min(tile_w / max(1, w), tile_h / max(1, h))
     nw = max(1, round(w * scale))
     nh = max(1, round(h * scale))
-    resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
+    resized = np.asarray(
+        cv2.resize(arr, (nw, nh), interpolation=cv2.INTER_AREA), dtype=np.uint8
+    )
     canvas = np.zeros((tile_h, tile_w, 3), dtype=np.uint8)
     ox = (tile_w - nw) // 2
     oy = (tile_h - nh) // 2
@@ -97,7 +101,7 @@ def build_contact_sheets(
         List of JPEG-encoded contact sheet byte buffers.
     """
     selected = select_representative_shots(shots, limit=max_shots)
-    tiles: list[cv2.typing.MatLike] = []
+    tiles: list[npt.NDArray[np.uint8]] = []
     for shot in selected:
         if not shot.keyframe_paths:
             continue
@@ -132,9 +136,12 @@ def build_contact_sheets(
         while len(chunk) < per_sheet:
             chunk.append(blank)
         row_imgs = [
-            np.hstack(chunk[r * cols : (r + 1) * cols]) for r in range(rows)
+            np.asarray(
+                np.hstack(chunk[r * cols : (r + 1) * cols]), dtype=np.uint8
+            )
+            for r in range(rows)
         ]
-        grid = np.vstack(row_imgs)
+        grid = np.asarray(np.vstack(row_imgs), dtype=np.uint8)
         ok, buf = cv2.imencode(
             ".jpg", grid, [int(cv2.IMWRITE_JPEG_QUALITY), 80]
         )

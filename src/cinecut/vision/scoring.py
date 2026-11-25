@@ -45,14 +45,15 @@ def _apply_crop_rect(
     """Slice `frame` to `crop` safely within frame dimensions."""
     if crop is None:
         return frame
-    fh, fw = frame.shape[:2]
+    arr = np.asarray(frame, dtype=np.uint8)
+    fh, fw = arr.shape[:2]
     x0 = max(0, min(crop.x, max(0, fw - 2)))
     y0 = max(0, min(crop.y, max(0, fh - 2)))
     x1 = min(fw, x0 + crop.w)
     y1 = min(fh, y0 + crop.h)
     if x1 - x0 < 2 or y1 - y0 < 2:
         return frame
-    return frame[y0:y1, x0:x1]
+    return np.asarray(arr[y0:y1, x0:x1], dtype=np.uint8)
 
 
 def detect_active_crop_rect(
@@ -194,12 +195,13 @@ def _detect_face_ratio(gray: cv2.typing.MatLike) -> float:
     faces = cascade.detectMultiScale(
         eq_gray, scaleFactor=1.15, minNeighbors=4, minSize=(24, 24)
     )
-    if len(faces) == 0:
+    faces_arr = np.asarray(faces, dtype=np.int32).reshape(-1, 4)
+    if faces_arr.shape[0] == 0:
         return 0.0
     area = float(gray.shape[0] * gray.shape[1])
     if area <= 0.0:
         return 0.0
-    face_area = sum(float(w * h) for _, _, w, h in faces)
+    face_area = float(np.sum(faces_arr[:, 2] * faces_arr[:, 3]))
     return float(np.clip(face_area / area, 0.0, 1.0))
 
 

@@ -22,19 +22,22 @@ from cinecut.schemas import (
 
 def _norm_series(
     values: npt.NDArray[np.floating[Any]],
-) -> npt.NDArray[np.floating[Any]]:
+) -> npt.NDArray[np.float64]:
     """Robustly normalize a 1D curve into `[0.0, 1.0]` via percentiles."""
-    if len(values) == 0:
-        return values
-    peak = float(np.max(values))
+    arr = np.asarray(values, dtype=np.float64)
+    if len(arr) == 0:
+        return arr
+    peak = float(np.max(arr))
     if peak <= 1e-8:
-        return np.zeros_like(values)
-    lo_p = float(np.percentile(values, 10))
-    hi_p = float(np.percentile(values, 95))
+        return np.zeros_like(arr, dtype=np.float64)
+    lo_p = float(np.percentile(arr, 10))
+    hi_p = float(np.percentile(arr, 95))
     span = hi_p - lo_p
     if span > 1e-6:
-        return np.clip((values - lo_p) / span, 0.0, 1.0)
-    return values / peak
+        return np.asarray(
+            np.clip((arr - lo_p) / span, 0.0, 1.0), dtype=np.float64
+        )
+    return np.asarray(arr / peak, dtype=np.float64)
 
 
 def _build_chunk_bounds(
@@ -200,23 +203,33 @@ def analyze_audio(
         beats_ms = list(range(0, duration_ms, step_ms))
 
     downbeats_ms = beats_ms[::4] if beats_ms else [0]
-    rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
+    rms = np.asarray(
+        librosa.feature.rms(y=y, hop_length=hop_length)[0], dtype=np.float64
+    )
     stft_mag = np.abs(librosa.stft(y, n_fft=2048, hop_length=hop_length))
     freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
     bass_mask = (freqs >= 20.0) & (freqs <= 200.0)
     vocal_mask = (freqs >= 300.0) & (freqs <= 3400.0)
-    bass_e = np.sqrt(np.mean(stft_mag[bass_mask] ** 2, axis=0))
-    vocal_e = np.sqrt(np.mean(stft_mag[vocal_mask] ** 2, axis=0))
-    onset_e = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+    bass_e = np.asarray(
+        np.sqrt(np.mean(stft_mag[bass_mask] ** 2, axis=0)), dtype=np.float64
+    )
+    vocal_e = np.asarray(
+        np.sqrt(np.mean(stft_mag[vocal_mask] ** 2, axis=0)), dtype=np.float64
+    )
+    onset_e = np.asarray(
+        librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length),
+        dtype=np.float64,
+    )
     n_frames = min(len(rms), len(bass_e), len(vocal_e), len(onset_e))
-    composite = (
+    composite = np.asarray(
         0.45 * _norm_series(rms[:n_frames])
         + 0.30 * _norm_series(bass_e[:n_frames])
         + 0.25
         * (
             0.5 * _norm_series(vocal_e[:n_frames])
             + 0.5 * _norm_series(onset_e[:n_frames])
-        )
+        ),
+        dtype=np.float64,
     )
     sections = _classify_sections(
         composite, hop_length, sr, duration_ms, downbeats_ms
