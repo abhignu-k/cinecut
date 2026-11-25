@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Protocol, cast
 
 import cv2
 import numpy as np
@@ -25,9 +26,30 @@ class ShotVisualProfile:
     shot_tag: str
 
 
+class _FaceCascade(Protocol):
+    """Minimal structural protocol for OpenCV Haar cascade classifier."""
+
+    def empty(self) -> bool:
+        """Return whether the cascade weights failed to load."""
+        ...
+
+    def detectMultiScale(
+        self,
+        image: cv2.typing.MatLike,
+        scaleFactor: float = ...,
+        minNeighbors: int = ...,
+        minSize: tuple[int, int] = ...,
+    ) -> object:
+        """Detect bounding rectangles for matching objects."""
+        ...
+
+
 @lru_cache(maxsize=1)
-def _get_face_cascade() -> cv2.CascadeClassifier | None:
+def _get_face_cascade() -> _FaceCascade | None:
     """Load and cache OpenCV frontal-face Haar cascade if available."""
+    cascade_cls: Any = getattr(cv2, "CascadeClassifier", None)
+    if cascade_cls is None:
+        return None
     data_mod = getattr(cv2, "data", None)
     base_dir = str(getattr(data_mod, "haarcascades", ""))
     if not base_dir:
@@ -35,7 +57,7 @@ def _get_face_cascade() -> cv2.CascadeClassifier | None:
     xml_path = Path(base_dir) / "haarcascade_frontalface_default.xml"
     if not xml_path.exists():
         return None
-    cascade = cv2.CascadeClassifier(str(xml_path))
+    cascade = cast(_FaceCascade, cascade_cls(str(xml_path)))
     return None if cascade.empty() else cascade
 
 
