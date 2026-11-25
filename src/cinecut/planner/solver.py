@@ -10,14 +10,18 @@ from cinecut.schemas import (
     AudioAnalysis,
     EditTimeline,
     EditTimelineDraft,
+    EffectType,
     FramingMode,
     GradePreset,
+    NarrativeRole,
     RationalFPS,
+    SectionLabel,
     ShotCatalog,
     ShotMetadata,
     SongSection,
     TimelineClip,
     TimelineClipDraft,
+    TransitionType,
 )
 
 
@@ -112,6 +116,131 @@ def _fit_source_span(
     return src_start, src_end, exact_speed
 
 
+def _append_tail_clips(
+    *,
+    solved_clips: list[TimelineClip],
+    cur_dst: int,
+    audio_dur: int,
+    catalog: ShotCatalog,
+    win_beats: list[int],
+    win_sections: list[SongSection],
+    target_fps: RationalFPS,
+    min_clip_ms: int,
+    auto_sfx_gain: float,
+    tail_allow_sfx: bool,
+) -> None:
+    """Fill remaining `[cur_dst, audio_dur]` with beat-locked clean shots."""
+    clean = [
+        s
+        for s in catalog.shots
+        if not s.is_dark_or_flat and s.text_clutter_score < 0.65
+    ]
+    pool = clean if clean else list(catalog.shots)
+    used_ids = {c.shot_id for c in solved_clips}
+    ordered = sorted(
+        pool,
+        key=lambda s: (
+            s.shot_id not in used_ids,
+            s.motion_score,
+            s.face_ratio,
+            s.sharpness_score,
+        ),
+        reverse=True,
+    )
+    cursor = 0
+    while cur_dst < audio_dur:
+        remaining = audio_dur - cur_dst
+        viable = [
+            s for s in ordered if (s.end_ms - s.start_ms) * 4 >= min_clip_ms
+        ]
+        candidates = viable if viable else ordered
+        shot = candidates[cursor % len(candidates)]
+        if (
+            len(candidates) > 1
+            and solved_clips
+            and shot.shot_id == solved_clips[-1].shot_id
+        ):
+            cursor += 1
+            shot = candidates[cursor % len(candidates)]
+        cursor += 1
+
+        shot_dur = shot.end_ms - shot.start_ms
+        max_feasible = shot_dur * 4
+        sec = next(
+            (s for s in win_sections if s.start_ms <= cur_dst <= s.end_ms), None
+        )
+        is_drop = sec is not None and sec.label == SectionLabel.DROP
+        target_step = 750 if is_drop else 2400
+        cap_dur = min(max_feasible, 2500 if is_drop else 5000)
+
+        beat_cands = [
+            b
+            for b in win_beats
+            if cur_dst + max(min_clip_ms, target_step // 2)
+            <= b
+            <= cur_dst + cap_dur
+        ]
+        raw_end = (
+            beat_cands[0]
+            if beat_cands
+            else cur_dst + max(min_clip_ms, min(cap_dur, target_step))
+        )
+        dst_end = target_fps.frame_to_ms(target_fps.ms_to_frame(raw_end))
+        dst_end = max(cur_dst + min_clip_ms, min(dst_end, audio_dur))
+
+        rem_after = audio_dur - dst_end
+        if 0 < rem_after < min_clip_ms:
+            if remaining <= max_feasible:
+                dst_end = audio_dur
+            else:
+                dst_end = max(
+                    cur_dst + min_clip_ms,
+                    min(cur_dst + max_feasible, audio_dur - min_clip_ms),
+                )
+        if dst_end <= cur_dst:
+            raise PlannerError("Unable to advance tail timeline completion.")
+
+        dst_dur = dst_end - cur_dst
+        synth_draft = TimelineClipDraft(
+            shot_id=shot.shot_id,
+            src_start_ms=shot.start_ms,
+            src_end_ms=shot.end_ms,
+            dst_start_ms=cur_dst,
+            dst_end_ms=dst_end,
+            speed=1.0 if shot_dur >= dst_dur else max(0.25, shot_dur / dst_dur),
+        )
+        src_start, src_end, exact_speed = _fit_source_span(
+            synth_draft, shot, dst_dur
+        )
+        solved_clips.append(
+            TimelineClip(
+                shot_id=shot.shot_id,
+                src_start_ms=src_start,
+                src_end_ms=src_end,
+                dst_start_ms=cur_dst,
+                dst_end_ms=dst_end,
+                speed=exact_speed,
+                crop_x_norm=shot.crop_x_norm,
+                transition=(
+                    TransitionType.FLASH
+                    if is_drop and len(solved_clips) % 4 == 0
+                    else TransitionType.CUT
+                ),
+                effect=(
+                    EffectType.ZOOM_PUNCH
+                    if is_drop and len(solved_clips) % 2 == 0
+                    else EffectType.NONE
+                ),
+                narrative_role=(
+                    NarrativeRole.CLIMAX if is_drop else NarrativeRole.RELEASE
+                ),
+                rationale="Deterministic beat-synced tail completion.",
+                sfx_gain=auto_sfx_gain if tail_allow_sfx else 0.0,
+            )
+        )
+        cur_dst = dst_end
+
+
 def solve_timeline(
     draft: EditTimelineDraft,
     audio: AudioAnalysis,
@@ -193,7 +322,7 @@ def solve_timeline(
         return auto_gain if clip_draft.use_sfx else 0.0
 
     shot_by_id = {s.shot_id: s for s in catalog.shots}
-    win_beats, _ = shift_audio_to_window(audio)
+    win_beats, win_sections = shift_audio_to_window(audio)
     audio_dur = audio.selected_window_end_ms - audio.selected_window_start_ms
     if audio_dur < min_clip_ms:
         raise PlannerError(
@@ -210,9 +339,31 @@ def solve_timeline(
     n_clips = len(raw_clips)
 
     for idx, clip_draft in enumerate(raw_clips):
+        shot = shot_by_id[clip_draft.shot_id]
+        shot_dur = shot.end_ms - shot.start_ms
+        max_feasible = shot_dur * 4
+        remaining = audio_dur - cur_dst
+        if remaining < min_clip_ms:
+            break
+
         is_last = idx == n_clips - 1
-        if is_last:
+        draft_span = max(
+            min_clip_ms, clip_draft.dst_end_ms - clip_draft.dst_start_ms
+        )
+        can_finish_on_clip = remaining <= max_feasible and (
+            n_clips == 1 or remaining <= max(10_000, round(draft_span * 1.6))
+        )
+
+        if is_last and can_finish_on_clip:
             dst_end = audio_dur
+        elif is_last:
+            target_dur = min(draft_span, max_feasible, 6000)
+            snapped = _snap_to_beat(
+                cur_dst + target_dur, win_beats, beat_snap_tolerance_ms
+            )
+            quantized = target_fps.frame_to_ms(target_fps.ms_to_frame(snapped))
+            max_tail = audio_dur - min_clip_ms
+            dst_end = max(cur_dst + min_clip_ms, min(quantized, max_tail))
         else:
             snapped = _snap_to_beat(
                 clip_draft.dst_end_ms, win_beats, beat_snap_tolerance_ms
@@ -220,9 +371,17 @@ def solve_timeline(
             quantized = target_fps.frame_to_ms(target_fps.ms_to_frame(snapped))
             min_end = cur_dst + min_clip_ms
             max_end = audio_dur - min_clip_ms * (n_clips - idx - 1)
+            if max_feasible >= min_clip_ms:
+                max_end = min(max_end, cur_dst + max_feasible)
             if max_end < min_end:
-                dst_end = audio_dur
-                is_last = True
+                if remaining <= max_feasible:
+                    dst_end = audio_dur
+                    is_last = True
+                else:
+                    max_tail = audio_dur - min_clip_ms
+                    dst_end = min(
+                        max_tail, cur_dst + max(min_clip_ms, max_feasible)
+                    )
             else:
                 dst_end = max(min_end, min(quantized, max_end))
 
@@ -232,7 +391,6 @@ def solve_timeline(
                 f"Cannot fit clip {idx} with min_clip_ms={min_clip_ms}."
             )
 
-        shot = shot_by_id[clip_draft.shot_id]
         src_start, src_end, exact_speed = _fit_source_span(
             clip_draft, shot, dst_dur
         )
@@ -253,8 +411,30 @@ def solve_timeline(
             )
         )
         cur_dst = dst_end
-        if is_last:
+        if is_last and cur_dst >= audio_dur:
             break
+
+    if cur_dst < audio_dur:
+        _append_tail_clips(
+            solved_clips=solved_clips,
+            cur_dst=cur_dst,
+            audio_dur=audio_dur,
+            catalog=catalog,
+            win_beats=win_beats,
+            win_sections=win_sections,
+            target_fps=target_fps,
+            min_clip_ms=min_clip_ms,
+            auto_sfx_gain=(
+                0.0
+                if sfx_audio_path is None
+                else (float(sfx_mix) if not isinstance(sfx_mix, str) else 0.0)
+            ),
+            tail_allow_sfx=(
+                sfx_audio_path is not None
+                and not isinstance(sfx_mix, str)
+                and sfx_mix > 0.0
+            ),
+        )
 
     max_sfx_gain = max((c.sfx_gain for c in solved_clips), default=0.0)
     resolved_sfx_path = (

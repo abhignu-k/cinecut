@@ -300,3 +300,66 @@ def test_solve_timeline_resolves_grade_and_selective_sfx(
     )
     assert tl_auto_frame.framing == FramingMode.BLUR
     assert tl_auto_frame.source_crop == CropRect(x=0, y=138, w=1920, h=804)
+
+
+def test_solve_timeline_repairs_short_tail_draft(tmp_path: Path) -> None:
+    long_audio = AudioAnalysis(
+        duration_ms=20000,
+        bpm=120.0,
+        beats_ms=list(range(0, 20001, 500)),
+        downbeats_ms=list(range(0, 20001, 2000)),
+        sections=[
+            SongSection(
+                start_ms=0, end_ms=8000, label=SectionLabel.BUILDUP, energy=0.5
+            ),
+            SongSection(
+                start_ms=8000, end_ms=20000, label=SectionLabel.DROP, energy=0.9
+            ),
+        ],
+        selected_window_start_ms=0,
+        selected_window_end_ms=20000,
+    )
+    catalog = ShotCatalog(
+        source_path="proxy.mp4",
+        video_fps=RationalFPS(num=30, den=1),
+        shots=[
+            ShotMetadata(
+                shot_id=f"s{i}",
+                start_ms=i * 3000,
+                end_ms=(i + 1) * 3000,
+                motion_score=0.3 + i * 0.1,
+                sharpness_score=90.0,
+            )
+            for i in range(6)
+        ],
+    )
+    short_draft = EditTimelineDraft(
+        clips=[
+            TimelineClipDraft(
+                shot_id="s0",
+                src_start_ms=0,
+                src_end_ms=2000,
+                dst_start_ms=0,
+                dst_end_ms=2000,
+            ),
+            TimelineClipDraft(
+                shot_id="s1",
+                src_start_ms=3000,
+                src_end_ms=6000,
+                dst_start_ms=2000,
+                dst_end_ms=4000,
+            ),
+        ]
+    )
+    tl = solve_timeline(
+        short_draft,
+        long_audio,
+        catalog,
+        source_video_path=tmp_path / "raw.mp4",
+        render_video_path=tmp_path / "proxy.mp4",
+        audio_path=tmp_path / "audio.wav",
+        target_fps=RationalFPS(num=30, den=1),
+    )
+    assert tl.audio_duration_ms == 20000
+    assert tl.clips[-1].dst_end_ms == 20000
+    assert len(tl.clips) >= 5

@@ -183,9 +183,11 @@ def build_editing_prompt(
     """Build a compact structured prompt with window-shifted audio & shots."""
     win_beats, win_sections = shift_audio_to_window(audio)
     win_dur = audio.selected_window_end_ms - audio.selected_window_start_ms
+    candidate_shots = select_representative_shots(catalog.shots, limit=80)
     payload = {
         "vibe": vibe,
         "window_duration_ms": win_dur,
+        "min_clips_hint": max(4, win_dur // 3500),
         "bpm": round(audio.bpm, 1),
         "has_video_audio": catalog.has_audio,
         "beats_ms": win_beats,
@@ -202,17 +204,19 @@ def build_editing_prompt(
                 "text_clutter": round(s.text_clutter_score, 2),
                 "tag": s.shot_tag,
             }
-            for s in catalog.shots
+            for s in candidate_shots
         ],
     }
     return (
         "You are a multi-genre cinematic editor (sports, film, anime, motors). "
         "Create an EditTimelineDraft where dst_start_ms/dst_end_ms are "
-        "window-relative [0, window_duration_ms] contiguously, and "
-        "src_start_ms/src_end_ms stay within each shot's [start_ms, end_ms]. "
-        "Labeled 4x4 contact sheets show representative keyframes across the "
-        "video. Prefer 'closeup' (high face_ratio), 'high_motion' action, and "
-        "clean atmospheric shots; NEVER pick 'low_quality' shots or high "
+        "window-relative [0, window_duration_ms] contiguously (clip[0] starts "
+        "at 0 and the FINAL clip ends cleanly at window_duration_ms; emit "
+        "enough clips >= min_clips_hint so no single clip exceeds 4 * shot "
+        "duration or 8000ms). src_start_ms/src_end_ms stay within each shot's "
+        "[start_ms, end_ms]. Labeled 4x4 contact sheets show keyframes across "
+        "the video. Prefer 'closeup' (high face_ratio), 'high_motion' action, "
+        "and clean atmospheric shots; NEVER pick 'low_quality' shots or high "
         "text_clutter stat-cards/interviews/subtitles. Pace dynamically: use "
         "longer atmospheric holds (3s-8s, speed 0.65-1.0) during setup/buildup "
         "when long shots exist, contrasting with tight beat-locked cuts "
