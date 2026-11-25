@@ -85,12 +85,14 @@ def detect_shots(
     scene_list = scene_manager.get_scene_list()
 
     duration_frames = int(video.duration.frame_num)
+    if duration_frames <= 0:
+        raise RuntimeError(f"Video has zero frames: {video_path}")
     total_ms = max(1, video_fps.frame_to_ms(duration_frames))
 
     raw_spans: list[tuple[int, int]] = []
     for start_tc, end_tc in scene_list:
-        s_ms = round(start_tc.seconds * 1000)
-        e_ms = round(end_tc.seconds * 1000)
+        s_ms = video_fps.frame_to_ms(int(start_tc.frame_num))
+        e_ms = video_fps.frame_to_ms(int(end_tc.frame_num))
         if e_ms > s_ms:
             raw_spans.append((s_ms, e_ms))
 

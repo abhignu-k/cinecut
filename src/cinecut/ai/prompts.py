@@ -1,0 +1,72 @@
+"""Prompt builder and 3-frame keyframe strip stitching helpers."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from cinecut.planner.solver import shift_audio_to_window
+from cinecut.schemas import AudioAnalysis, ShotCatalog
+
+
+def stitch_keyframe_strip(keyframe_paths: list[str]) -> bytes | None:
+    """Stitch up to 3 shot keyframe JPEGs horizontally into one JPEG."""
+    imgs: list[cv2.typing.MatLike] = []
+    for raw_path in keyframe_paths[:3]:
+        path = Path(raw_path)
+        if not path.exists():
+            continue
+        img = cv2.imread(str(path))
+        if img is not None:
+            imgs.append(img)
+    if not imgs:
+        return None
+    target_h = min(im.shape[0] for im in imgs)
+    resized = [
+        cv2.resize(
+            im,
+            (max(1, round(im.shape[1] * target_h / im.shape[0])), target_h),
+        )
+        for im in imgs
+    ]
+    strip = np.hstack(resized)
+    ok, buf = cv2.imencode(".jpg", strip, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+    if not ok:
+        return None
+    return bytes(buf.tobytes())
+
+
+def build_editing_prompt(
+    audio: AudioAnalysis, catalog: ShotCatalog, vibe: str
+) -> str:
+    """Build a compact structured prompt with window-shifted audio & shots."""
+    win_beats, win_sections = shift_audio_to_window(audio)
+    win_dur = audio.selected_window_end_ms - audio.selected_window_start_ms
+    payload = {
+        "vibe": vibe,
+        "window_duration_ms": win_dur,
+        "bpm": round(audio.bpm, 1),
+        "beats_ms": win_beats,
+        "sections": [sec.model_dump(mode="json") for sec in win_sections],
+        "shots": [
+            {
+                "shot_id": s.shot_id,
+                "start_ms": s.start_ms,
+                "end_ms": s.end_ms,
+                "duration_ms": s.end_ms - s.start_ms,
+                "motion_score": round(s.motion_score, 3),
+                "sharpness_score": round(s.sharpness_score, 1),
+            }
+            for s in catalog.shots
+        ],
+    }
+    return (
+        "You are a cinematic vertical video editor. Create an "
+        "EditTimelineDraft covering [0, window_duration_ms] contiguously. "
+        "Match high-motion shots to drop/climax sections and slower setup "
+        "shots to intro/buildup. Cut on beats_ms. Input context:\n"
+        + json.dumps(payload, indent=2)
+    )

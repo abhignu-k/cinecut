@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 from pathlib import Path
 
 import cv2
@@ -35,13 +37,15 @@ def extract_keyframes(
 ) -> list[str]:
     """Extract up to 3 representative JPEGs (start, mid, end) for a shot."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    max_frame = max(0, total_frames - 1) if total_frames > 0 else 0
     dur = max(1, end_ms - start_ms)
     fracs = (0.15, 0.5, 0.85) if dur >= 600 else (0.5,)
     paths: list[str] = []
 
     for idx, frac in enumerate(fracs):
         target_ms = start_ms + round(dur * frac)
-        frame_idx = max(0, fps.ms_to_frame(target_ms))
+        frame_idx = min(max_frame, max(0, fps.ms_to_frame(target_ms)))
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ok, frame = cap.read()
         if not ok or frame is None:
@@ -89,6 +93,9 @@ def index_video_shots(
         raise RuntimeError(f"Failed to open video for scoring: {video_path}")
 
     keyframes_dir = media_cache / "keyframes"
+    if not use_cache and keyframes_dir.exists():
+        shutil.rmtree(keyframes_dir)
+
     shots: list[ShotMetadata] = []
     try:
         for idx, (start_ms, end_ms) in enumerate(spans, start=1):
@@ -119,8 +126,10 @@ def index_video_shots(
         shots=shots,
     )
     media_cache.mkdir(parents=True, exist_ok=True)
-    catalog_path.write_text(
+    tmp_catalog = catalog_path.with_suffix(".tmp.json")
+    tmp_catalog.write_text(
         json.dumps(catalog.model_dump(mode="json"), indent=2) + "\n",
         encoding="utf-8",
     )
+    os.replace(tmp_catalog, catalog_path)
     return catalog

@@ -8,6 +8,20 @@ import numpy as np
 from cinecut.schemas import RationalFPS
 
 
+def _downscale_gray(
+    frame: cv2.typing.MatLike, max_width: int = 480
+) -> cv2.typing.MatLike:
+    """Convert to grayscale and downscale to <= max_width for fast CV."""
+    height, width = frame.shape[:2]
+    if width > max_width:
+        scale = max_width / float(width)
+        new_h = max(2, int(round(height * scale)))
+        frame = cv2.resize(
+            frame, (max_width, new_h), interpolation=cv2.INTER_AREA
+        )
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+
 def _compute_crop_x_norm(gray: cv2.typing.MatLike) -> float:
     """Estimate horizontal subject energy centroid in [0.15, 0.85]."""
     sobel_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
@@ -29,35 +43,43 @@ def score_shot(
     fps: RationalFPS,
 ) -> tuple[float, float, float]:
     """Compute `(motion_score, sharpness_score, crop_x_norm)` for a shot."""
-    start_f = max(0, fps.ms_to_frame(start_ms))
-    end_f = max(start_f + 1, fps.ms_to_frame(end_ms))
-    n_samples = min(5, max(2, end_f - start_f))
-    sample_indices = np.linspace(
-        start_f, max(start_f, end_f - 1), num=n_samples, dtype=int
-    )
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    max_frame = max(0, total_frames - 1) if total_frames > 0 else 0
+    start_f = min(max_frame, max(0, fps.ms_to_frame(start_ms)))
+    end_f = min(max_frame + 1, max(start_f + 1, fps.ms_to_frame(end_ms)))
 
-    grays: list[cv2.typing.MatLike] = []
+    if end_f - start_f <= 1:
+        sample_indices = [start_f]
+    else:
+        n_samples = min(5, end_f - start_f)
+        sample_indices = [
+            min(max_frame, int(x))
+            for x in np.linspace(
+                start_f, max(start_f, end_f - 1), num=n_samples
+            )
+        ]
+
+    prev_gray: cv2.typing.MatLike | None = None
+    motion_diffs: list[float] = []
     sharp_vals: list[float] = []
     crop_vals: list[float] = []
 
     for frame_idx in sample_indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ok, frame = cap.read()
         if not ok or frame is None:
             continue
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        grays.append(gray)
+        gray = _downscale_gray(frame)
         lap = cv2.Laplacian(gray, cv2.CV_64F)
         sharp_vals.append(float(lap.var()))
         crop_vals.append(_compute_crop_x_norm(gray))
+        if prev_gray is not None:
+            diff = cv2.absdiff(prev_gray, gray)
+            motion_diffs.append(float(np.mean(np.asarray(diff))) / 255.0)
+        prev_gray = gray
 
-    if not grays:
+    if not sharp_vals:
         return 0.0, 0.0, 0.5
-
-    motion_diffs: list[float] = []
-    for prev_g, curr_g in zip(grays, grays[1:], strict=False):
-        diff = cv2.absdiff(prev_g, curr_g)
-        motion_diffs.append(float(np.mean(np.asarray(diff))) / 255.0)
 
     raw_motion = float(np.mean(motion_diffs)) if motion_diffs else 0.0
     motion_score = float(np.clip(raw_motion * 4.0, 0.0, 1.0))
