@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.installed.cfg
+*.egg
+build/
+dist/
+
+# Environments & Tooling
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Secrets & OS
+.env
+.env.*
+.DS_Store
+
+# cinecut Runtime Cache & Sample Media
+.cinecut_cache/
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.mp3
+*.otio
