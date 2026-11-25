@@ -11,14 +11,14 @@
 - [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
 ## Phase 2: Elephant Phase — Architecture Spec, Shared Schemas & Critic Gate
-- [~] Task: Write failing schema and timebase unit tests (TDD Red)
-  - [~] Write tests covering `ProjectConfig`, `MediaInfo`, `AudioAnalysis`, `ShotCatalog`, `EditTimeline` validation, millisecond/rational FPS conversion, and invalid boundary rejections
-- [ ] Task: Implement Pydantic v2 schemas and canonical JSON Schema export (TDD Green)
-  - [ ] Implement `src/cinecut/schemas/` (`project.py`, `audio.py`, `vision.py`, `timeline.py`) and deterministic schema export helper targeting `docs/schemas/*.json`
-  - [ ] Author `docs/architecture.md` documenting module boundaries, cache layout, and A/V sync math
-- [ ] Task: Run EGM Elephant Gate review on architecture and schemas
-  - [ ] Audit `docs/architecture.md` and `src/cinecut/schemas/` via `egm-design`, `egm-implementation-readiness`, and `egm-zoom-out`, and resolve any blocking design/sync gaps
-- [ ] Task: Phase Verification & Checkpoint (Refer to workflow.md)
+- [x] Task: Write failing schema and timebase unit tests (TDD Red) (acd0f47)
+  - [x] Write tests covering `ProjectConfig`, `MediaInfo`, `AudioAnalysis`, `ShotCatalog`, `EditTimeline` validation, millisecond/rational FPS conversion, and invalid boundary rejections
+- [x] Task: Implement Pydantic v2 schemas and canonical JSON Schema export (TDD Green) (acd0f47)
+  - [x] Implement `src/cinecut/schemas/` (`project.py`, `audio.py`, `vision.py`, `timeline.py`) and deterministic schema export helper targeting `docs/schemas/*.json`
+  - [x] Author `docs/architecture.md` documenting module boundaries, cache layout, and A/V sync math
+- [x] Task: Run EGM Elephant Gate review on architecture and schemas (7299889)
+  - [x] Audit `docs/architecture.md` and `src/cinecut/schemas/` via `egm-design`, `egm-implementation-readiness`, and `egm-zoom-out`, and resolve any blocking design/sync gaps
+- [~] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
 ## Phase 3: Media Ingest & Musical Audio Parser (`ingest/`, `audio/`)
 - [ ] Task: Implement non-destructive media ingest and VFR-to-CFR normalization (TDD)
@@ -52,7 +52,7 @@
 
 ## Phase 6: FFmpeg Compositor & OpenTimelineIO Export (`compositor/`, `export/`)
 - [ ] Task: Implement FFmpeg `filter_complex_script` compositor (TDD)
-  - [ ] Write failing unit tests for `9:16` smart crop + `1080x1920` Lanczos scale, `setpts` speed ramps, `zoom_punch`, `flash`/`crossfade` transitions, `loudnorm` + fades, `--dry-run-ffmpeg`, and chunked concat fallback (>40 clips)
+  - [ ] Write failing unit tests for `9:16` smart crop + `1080x1920` Lanczos scale, `setpts` speed ramps, `zoom_punch` (crop+scale), `flash` transitions, `loudnorm` + `apad`/`atrim` + fades, and `--dry-run-ffmpeg`
   - [ ] Implement `src/cinecut/compositor/` (`filtergraph.py`, `renderer.py`) and verify tests + >80% coverage
 - [ ] Task: Implement OpenTimelineIO (`.otio`) exporter (TDD)
   - [ ] Write failing unit tests for `.otio` timeline creation, source URI references, `LinearTimeWarp` speed factors, markers, and round-trip parsing via `opentimelineio`
