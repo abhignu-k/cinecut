@@ -29,12 +29,14 @@ from cinecut.schemas.timeline import (
     TimelineClipDraft,
     TransitionType,
     resolve_dimensions,
+    resolve_output_spec,
 )
-from cinecut.schemas.vision import ShotCatalog, ShotMetadata
+from cinecut.schemas.vision import CropRect, ShotCatalog, ShotMetadata
 
 __all__ = [
     "AspectPreset",
     "AudioAnalysis",
+    "CropRect",
     "EditTimeline",
     "EditTimelineDraft",
     "EffectType",
@@ -57,6 +59,7 @@ __all__ = [
     "TransitionType",
     "export_json_schemas",
     "resolve_dimensions",
+    "resolve_output_spec",
 ]
 
 _SCHEMA_MODELS: dict[str, type[BaseModel]] = {

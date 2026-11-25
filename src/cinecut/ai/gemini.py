@@ -13,10 +13,9 @@ from pydantic import ValidationError
 
 from cinecut.ai.base import AIBackendError
 from cinecut.ai.prompts import (
+    build_contact_sheets,
     build_editing_prompt,
     build_song_recommendation_prompt,
-    select_representative_shots,
-    stitch_keyframe_strip,
 )
 from cinecut.schemas import (
     AudioAnalysis,
@@ -73,17 +72,19 @@ class GeminiBackend:
         return models
 
     def _build_contents(
-        self, prompt: str, catalog: ShotCatalog, *, limit: int = 12
+        self, prompt: str, catalog: ShotCatalog, *, max_shots: int = 48
     ) -> list[Any]:
-        """Attach stitched keyframe JPEG strips to the prompt contents."""
+        """Attach labeled 4x4 contact-sheet JPEG grids to prompt contents."""
         contents: list[Any] = [prompt]
-        for shot in select_representative_shots(catalog.shots, limit=limit):
-            strip = stitch_keyframe_strip(shot.keyframe_paths)
-            if strip is not None:
-                contents.append(f"Shot {shot.shot_id}:")
-                contents.append(
-                    types.Part.from_bytes(data=strip, mime_type="image/jpeg")
-                )
+        sheets = build_contact_sheets(catalog.shots, max_shots=max_shots)
+        for idx, sheet in enumerate(sheets, start=1):
+            contents.append(
+                f"Keyframe Contact Sheet {idx}/{len(sheets)} "
+                "(tiles labeled by shot_id):"
+            )
+            contents.append(
+                types.Part.from_bytes(data=sheet, mime_type="image/jpeg")
+            )
         return contents
 
     def _call_structured(
@@ -140,7 +141,7 @@ class GeminiBackend:
     ) -> EditTimelineDraft:
         """Call Gemini structured output with transient 503/429 backoff."""
         contents = self._build_contents(
-            build_editing_prompt(audio, catalog, vibe), catalog, limit=12
+            build_editing_prompt(audio, catalog, vibe), catalog, max_shots=48
         )
         result: EditTimelineDraft = self._call_structured(
             contents, EditTimelineDraft, "EditTimelineDraft"
@@ -157,7 +158,7 @@ class GeminiBackend:
         contents = self._build_contents(
             build_song_recommendation_prompt(catalog, vibe, count=count),
             catalog,
-            limit=12,
+            max_shots=32,
         )
         result: SongRecommendationList = self._call_structured(
             contents, SongRecommendationList, "SongRecommendationList"

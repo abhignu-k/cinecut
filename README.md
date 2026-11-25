@@ -12,7 +12,8 @@
 ## Why `cinecut`?
 
 - **Story & Dynamic Pacing Across Genres:** Holds longer atmospheric shots (`3–10s`) during setups/buildups and snaps into high-motion beat-synced `zoom_punch` / `flash` cuts at the drop across sports, film, anime, and motorsports.
-- **Native Framing, Color & Smart SFX (`auto` defaults):** Automatically chooses full-frame `4:5` (`1080x1350`) for landscape footage (`9:16` for portrait) or honors `--aspect 4:3|16:9|9:16|4:5`, applies AI-chosen `--grade auto|moody|warm|crisp|none`, and lets `--sfx-mix auto` blend original sound (`engines`, crowd roar, dialogue pauses) only when it elevates the cut.
+- **Auto Letterbox Strip, Mobile-First Framing & Smart SFX (`auto` defaults):** Strips baked-in `2.39:1` cinema black bars, automatically selects full-bleed `4:3` (`1440x1080`) for standard landscape footage (`blur` fallback on ultra-wide sources, `9:16` for portrait) or honors `--aspect` / `--framing`, applies AI-chosen `--grade auto|moody|warm|crisp|none`, and lets `--sfx-mix auto` blend original sound only when it elevates the cut.
+- **Hook-Smart Audio & Visual Context:** Multi-band chorus/drop detection anchors auto windows on `buildup -> hook` transitions, while OpenCV pre-filtering skips stat cards/dark transitions and feeds labeled `48`-shot contact-sheet grids to Gemini/Gemma.
 - **AI Song Recommender (`cinecut recommend`):** Analyzes any `--video` + `--vibe` to suggest 5 tracks with target BPM and ready-to-run `ytsearch1:` audio queries (`--audio "ytsearch1:..."`).
 - **Dual AI Engine (`--engine gemini` / `--engine gemma`):** Use Google Gemini (`google-genai`) in the cloud or run 100% offline/copyright-safe with multimodal Gemma via local Ollama (`127.0.0.1:11434`). Includes `--engine mock` for deterministic dry runs and CI.
 - **Zero A/V Sync Drift:** Automatically normalizes VFR, display rotation, non-square SAR, and non-zero start PTS to a cached CFR proxy, then validates speed-duration conservation (`<= 1ms`) and frame-grid alignment before rendering.
@@ -90,16 +91,11 @@ export GEMINI_API_KEY="your-api-key"
 # 1. Ask cinecut to suggest 5 tracks fitting your footage + vibe
 cinecut recommend --video highlights.mp4 --vibe "dramatic comeback"
 
-# 2. Generate the edit (--aspect, --grade, and --sfx-mix all default to auto)
+# 2. Generate the edit (all tuning flags default to auto; experienced users can override any flag)
 cinecut edit \
   --video highlights.mp4 \
   --audio "ytsearch1:Kanye West - All Of The Lights audio" \
   --vibe "slow stadium/pit buildup into explosive climax cuts" \
-  --aspect auto \
-  --framing crop \
-  --grade auto \
-  --sfx-mix auto \
-  --engine gemini \
   --out edit.mp4 \
   --otio edit.otio
 ```

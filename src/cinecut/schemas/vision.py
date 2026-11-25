@@ -7,8 +7,17 @@ from pydantic import BaseModel, Field, model_validator
 from cinecut.schemas.timebase import RationalFPS
 
 
+class CropRect(BaseModel):
+    """Even-aligned source crop stripping baked letterbox/pillarbox bars."""
+
+    x: int = Field(ge=0)
+    y: int = Field(ge=0)
+    w: int = Field(ge=2)
+    h: int = Field(ge=2)
+
+
 class ShotMetadata(BaseModel):
-    """Indexed visual shot with motion, sharpness, and crop anchor."""
+    """Indexed visual shot with motion, sharpness, and framing metadata."""
 
     shot_id: str = Field(min_length=1)
     start_ms: int = Field(ge=0)
@@ -16,6 +25,10 @@ class ShotMetadata(BaseModel):
     motion_score: float = Field(ge=0.0, le=1.0)
     sharpness_score: float = Field(ge=0.0)
     crop_x_norm: float = Field(default=0.5, ge=0.0, le=1.0)
+    face_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    text_clutter_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    is_dark_or_flat: bool = False
+    shot_tag: str = "action"
     keyframe_paths: list[str] = Field(default_factory=list, max_length=3)
 
     @model_validator(mode="after")
@@ -31,6 +44,7 @@ class ShotCatalog(BaseModel):
     source_path: str = Field(min_length=1)
     video_fps: RationalFPS
     has_audio: bool = False
+    active_crop: CropRect | None = None
     shots: list[ShotMetadata] = Field(min_length=1)
 
     @model_validator(mode="after")

@@ -160,6 +160,17 @@ def solve_timeline(
     if not isinstance(sfx_mix, str) and not (0.0 <= sfx_mix <= 1.0):
         raise PlannerError("sfx_mix must be between 0.0 and 1.0 or 'auto'.")
 
+    resolved_framing = framing
+    if resolved_framing == FramingMode.AUTO:
+        ref_w = catalog.active_crop.w if catalog.active_crop else width
+        ref_h = catalog.active_crop.h if catalog.active_crop else height
+        src_ratio = ref_w / float(max(1, ref_h))
+        tgt_ratio = width / float(max(1, height))
+        crop_loss = max(src_ratio / tgt_ratio, tgt_ratio / src_ratio)
+        resolved_framing = (
+            FramingMode.CROP if crop_loss <= 1.45 else FramingMode.BLUR
+        )
+
     resolved_grade = grade
     if resolved_grade == GradePreset.AUTO:
         resolved_grade = (
@@ -259,7 +270,8 @@ def solve_timeline(
         target_fps=target_fps,
         width=width,
         height=height,
-        framing=framing,
+        framing=resolved_framing,
+        source_crop=catalog.active_crop,
         grade=resolved_grade,
         sfx_audio_path=resolved_sfx_path,
         sfx_mix=max_sfx_gain,

@@ -12,6 +12,7 @@ from cinecut.ai.gemini import GeminiBackend
 from cinecut.ai.gemma import GemmaBackend
 from cinecut.ai.mock import MockBackend
 from cinecut.ai.prompts import (
+    build_contact_sheets,
     select_representative_shots,
     stitch_keyframe_strip,
 )
@@ -275,3 +276,37 @@ def test_gemini_and_gemma_recommend_songs() -> None:
     out_ol = ol.recommend_songs(catalog, "dramatic victory", count=1)
     assert attempts == 2
     assert out_ol.recommendations[0].title == "Outro"
+
+
+def test_contact_sheets_and_mock_filters_low_quality(
+    tmp_path: Path,
+) -> None:
+    shots: list[ShotMetadata] = []
+    for i in range(20):
+        kf = tmp_path / f"kf_{i}.jpg"
+        cv2.imwrite(str(kf), np.full((60, 100, 3), 80 + i * 5, dtype=np.uint8))
+        is_bad = i == 5
+        shots.append(
+            ShotMetadata(
+                shot_id=f"shot_{i:04d}",
+                start_ms=i * 1000,
+                end_ms=(i + 1) * 1000,
+                motion_score=0.9 if is_bad else 0.3 + (i % 5) * 0.1,
+                sharpness_score=100.0,
+                face_ratio=0.05 if i == 2 else 0.0,
+                is_dark_or_flat=is_bad,
+                shot_tag="low_quality" if is_bad else "action",
+                keyframe_paths=[str(kf)],
+            )
+        )
+    sheets = build_contact_sheets(shots, max_shots=18, cols=4, rows=4)
+    assert len(sheets) == 2
+
+    audio, _ = _sample_inputs()
+    cat = ShotCatalog(
+        source_path="proxy.mp4",
+        video_fps=RationalFPS(num=30, den=1),
+        shots=shots,
+    )
+    draft = MockBackend().generate_draft(audio, cat, "moody edit")
+    assert all(c.shot_id != "shot_0005" for c in draft.clips)

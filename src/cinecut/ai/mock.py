@@ -113,10 +113,17 @@ class MockBackend:
         if cuts[-1] != win_dur:
             cuts.append(win_dur)
 
+        clean_shots = [
+            s
+            for s in catalog.shots
+            if not s.is_dark_or_flat and s.text_clutter_score < 0.65
+        ]
+        source_shots = clean_shots if clean_shots else catalog.shots
         shots_by_motion = sorted(
-            catalog.shots,
+            source_shots,
             key=lambda s: (s.motion_score, s.sharpness_score),
         )
+        closeup_shots = [s for s in source_shots if s.face_ratio >= 0.02]
         clips: list[TimelineClipDraft] = []
         prev_shot_id: str | None = None
         allow_sfx = catalog.has_audio and not _wants_pure_music(vibe)
@@ -159,10 +166,16 @@ class MockBackend:
                     else TransitionType.CUT
                 )
             else:
-                cand_idx = idx % n_pool
-                shot = pool[cand_idx]
-                if n_pool > 1 and shot.shot_id == prev_shot_id:
-                    shot = pool[(cand_idx + 1) % n_pool]
+                setup_pool = [
+                    s
+                    for s in closeup_shots
+                    if (s.end_ms - s.start_ms) * 4 >= dst_dur
+                ]
+                pick_pool = setup_pool if setup_pool else pool
+                cand_idx = idx % len(pick_pool)
+                shot = pick_pool[cand_idx]
+                if len(pick_pool) > 1 and shot.shot_id == prev_shot_id:
+                    shot = pick_pool[(cand_idx + 1) % len(pick_pool)]
                 role = (
                     NarrativeRole.SETUP
                     if label == SectionLabel.INTRO

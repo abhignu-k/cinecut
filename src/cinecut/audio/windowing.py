@@ -23,18 +23,21 @@ def select_highlight_window(
     sections: list[SongSection],
     target_duration_ms: int,
     *,
+    beats_ms: list[int] | None = None,
     audio_start_ms: int | None = None,
     full_audio: bool = False,
 ) -> tuple[int, int]:
     """Select the `[start_ms, end_ms]` audio window for editing.
 
-    Favors windows containing a rising buildup-to-drop contrast rather than
-    flat opening loudness.
+    Favors windows where a lower-energy buildup leads into a sustained
+    chorus/drop payload (`0.28T..0.88T`) rather than opening mid-drop or
+    truncating a hook early.
 
     Args:
         duration_ms: Total track duration in milliseconds.
         sections: Ordered musical sections.
         target_duration_ms: Desired edit duration in milliseconds.
+        beats_ms: Optional beat timestamps used to align the window start.
         audio_start_ms: Explicit user start offset override.
         full_audio: Whether to use the entire audio track.
 
@@ -66,14 +69,22 @@ def select_highlight_window(
 
     for cand_start in candidates:
         cand_end = cand_start + target_duration_ms
-        mid = cand_start + round(target_duration_ms * 0.25)
-        first_e = _window_mean_energy(sections, cand_start, mid)
-        second_e = _window_mean_energy(sections, mid, cand_end)
-        mean_e = _window_mean_energy(sections, cand_start, cand_end)
-        drop_contrast = max(0.0, second_e - first_e)
+        buildup_end = cand_start + round(target_duration_ms * 0.28)
+        payload_end = cand_start + round(target_duration_ms * 0.88)
+        early_end = cand_start + max(1, round(target_duration_ms * 0.15))
+
+        first_e = _window_mean_energy(sections, cand_start, buildup_end)
+        payload_e = _window_mean_energy(sections, buildup_end, payload_end)
+        tail_e = _window_mean_energy(sections, payload_end, cand_end)
+        drop_contrast = max(0.0, payload_e - first_e)
 
         has_buildup = False
         has_drop = False
+        payload_drop_ms = 0
+        early_drop_ms = 0
+        payload_len = max(1, payload_end - buildup_end)
+        early_len = max(1, early_end - cand_start)
+
         for sec in sections:
             overlap = min(cand_end, sec.end_ms) - max(cand_start, sec.start_ms)
             if overlap <= 0:
@@ -82,12 +93,37 @@ def select_highlight_window(
                 has_buildup = True
             elif sec.label == SectionLabel.DROP:
                 has_drop = True
+                p_ov = min(payload_end, sec.end_ms) - max(
+                    buildup_end, sec.start_ms
+                )
+                if p_ov > 0:
+                    payload_drop_ms += p_ov
+                e_ov = min(early_end, sec.end_ms) - max(
+                    cand_start, sec.start_ms
+                )
+                if e_ov > 0:
+                    early_drop_ms += e_ov
 
-        score = mean_e + 0.65 * drop_contrast
+        payload_drop_ratio = payload_drop_ms / payload_len
+        early_drop_ratio = early_drop_ms / early_len
+        score = (
+            payload_e
+            + 0.70 * drop_contrast
+            + 0.45 * payload_drop_ratio
+            + 0.15 * tail_e
+            - 0.25 * early_drop_ratio
+        )
         if has_buildup and has_drop:
             score += 0.25
         if score > best_score:
             best_score = score
             best_start = cand_start
+
+    if beats_ms:
+        valid_beats = [b for b in beats_ms if b <= max_start]
+        if valid_beats:
+            nearest = min(valid_beats, key=lambda b: abs(b - best_start))
+            if abs(nearest - best_start) <= 600:
+                best_start = nearest
 
     return best_start, best_start + target_duration_ms

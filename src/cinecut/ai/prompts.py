@@ -16,26 +16,131 @@ from cinecut.schemas import AudioAnalysis, ShotCatalog, ShotMetadata
 def select_representative_shots(
     shots: list[ShotMetadata], limit: int
 ) -> list[ShotMetadata]:
-    """Select diverse + high-energy shots across the whole video."""
+    """Select clean, diverse, closeup, and high-motion shots across video."""
     if limit <= 0 or len(shots) <= limit:
         return shots[: max(0, limit)]
 
+    clean = [
+        s
+        for s in shots
+        if not s.is_dark_or_flat and s.text_clutter_score < 0.65
+    ]
+    pool = clean if len(clean) >= max(4, limit // 2) else shots
+    if len(pool) <= limit:
+        return pool
+
+    idx_by_id = {id(s): i for i, s in enumerate(shots)}
     n_even = max(1, limit // 2)
-    even_indices = {
-        round(i * (len(shots) - 1) / max(1, n_even - 1)) for i in range(n_even)
+    chosen = {
+        idx_by_id[id(pool[round(i * (len(pool) - 1) / max(1, n_even - 1))])]
+        for i in range(n_even)
     }
-    ranked_indices = sorted(
-        range(len(shots)),
-        key=lambda i: shots[i].motion_score * (shots[i].sharpness_score + 1.0),
+    closeup_ranked = sorted(
+        (s for s in pool if s.face_ratio >= 0.02),
+        key=lambda s: s.face_ratio * (s.sharpness_score + 1.0),
         reverse=True,
     )
-    chosen = set(even_indices)
-    for idx in ranked_indices:
+    for s in closeup_ranked[: max(1, limit // 4)]:
         if len(chosen) >= limit:
             break
-        chosen.add(idx)
+        chosen.add(idx_by_id[id(s)])
+
+    motion_ranked = sorted(
+        pool,
+        key=lambda s: s.motion_score * (s.sharpness_score + 1.0),
+        reverse=True,
+    )
+    for s in motion_ranked:
+        if len(chosen) >= limit:
+            break
+        chosen.add(idx_by_id[id(s)])
 
     return [shots[i] for i in sorted(chosen)]
+
+
+def _fit_tile(
+    img: cv2.typing.MatLike, tile_w: int, tile_h: int
+) -> cv2.typing.MatLike:
+    """Resize/pad image into a `(tile_h, tile_w)` BGR canvas."""
+    h, w = img.shape[:2]
+    scale = min(tile_w / max(1, w), tile_h / max(1, h))
+    nw = max(1, round(w * scale))
+    nh = max(1, round(h * scale))
+    resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
+    canvas = np.zeros((tile_h, tile_w, 3), dtype=np.uint8)
+    ox = (tile_w - nw) // 2
+    oy = (tile_h - nh) // 2
+    canvas[oy : oy + nh, ox : ox + nw] = resized
+    return canvas
+
+
+def build_contact_sheets(
+    shots: list[ShotMetadata],
+    *,
+    max_shots: int = 48,
+    cols: int = 4,
+    rows: int = 4,
+    tile_w: int = 320,
+    tile_h: int = 180,
+) -> list[bytes]:
+    """Pack representative middle keyframes into labeled JPEG contact sheets.
+
+    Args:
+        shots: Indexed shot metadata entries.
+        max_shots: Maximum representative shots to include across all grids.
+        cols: Grid columns per sheet.
+        rows: Grid rows per sheet.
+        tile_w: Width of each thumbnail tile in pixels.
+        tile_h: Height of each thumbnail tile in pixels.
+
+    Returns:
+        List of JPEG-encoded contact sheet byte buffers.
+    """
+    selected = select_representative_shots(shots, limit=max_shots)
+    tiles: list[cv2.typing.MatLike] = []
+    for shot in selected:
+        if not shot.keyframe_paths:
+            continue
+        mid_path = Path(shot.keyframe_paths[len(shot.keyframe_paths) // 2])
+        if not mid_path.exists():
+            continue
+        img = cv2.imread(str(mid_path))
+        if img is None:
+            continue
+        tile = _fit_tile(img, tile_w, tile_h)
+        cv2.rectangle(tile, (0, 0), (190, 22), (0, 0, 0), -1)
+        cv2.putText(
+            tile,
+            f"{shot.shot_id} [{shot.shot_tag}]",
+            (5, 16),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+        tiles.append(tile)
+
+    if not tiles:
+        return []
+
+    per_sheet = max(1, cols * rows)
+    sheets: list[bytes] = []
+    blank = np.zeros((tile_h, tile_w, 3), dtype=np.uint8)
+    for start in range(0, len(tiles), per_sheet):
+        chunk = tiles[start : start + per_sheet]
+        while len(chunk) < per_sheet:
+            chunk.append(blank)
+        row_imgs = [
+            np.hstack(chunk[r * cols : (r + 1) * cols]) for r in range(rows)
+        ]
+        grid = np.vstack(row_imgs)
+        ok, buf = cv2.imencode(
+            ".jpg", grid, [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+        )
+        if ok:
+            sheets.append(bytes(buf.tobytes()))
+    return sheets
 
 
 def stitch_keyframe_strip(keyframe_paths: list[str]) -> bytes | None:
@@ -86,6 +191,9 @@ def build_editing_prompt(
                 "duration_ms": s.end_ms - s.start_ms,
                 "motion_score": round(s.motion_score, 3),
                 "sharpness_score": round(s.sharpness_score, 1),
+                "face_ratio": round(s.face_ratio, 3),
+                "text_clutter": round(s.text_clutter_score, 2),
+                "tag": s.shot_tag,
             }
             for s in catalog.shots
         ],
@@ -95,21 +203,22 @@ def build_editing_prompt(
         "Create an EditTimelineDraft where dst_start_ms/dst_end_ms are "
         "window-relative [0, window_duration_ms] contiguously, and "
         "src_start_ms/src_end_ms stay within each shot's [start_ms, end_ms]. "
-        "Prefer clean action, expressive closeup, tracking, and atmospheric "
-        "shots; AVOID shots cluttered with broadcast HUDs, scoreboards, "
-        "nameplates, hardsubs, or static text overlays. Pace dynamically: use "
+        "Labeled 4x4 contact sheets show representative keyframes across the "
+        "video. Prefer 'closeup' (high face_ratio), 'high_motion' action, and "
+        "clean atmospheric shots; NEVER pick 'low_quality' shots or high "
+        "text_clutter stat-cards/interviews/subtitles. Pace dynamically: use "
         "longer atmospheric holds (3s-8s, speed 0.65-1.0) during setup/buildup "
         "when long shots exist, contrasting with tight beat-locked cuts "
-        "(0.45s-1.2s) with zoom_punch/flash on drop/climax. Cut on beats_ms. "
-        "Set recommended_grade ('moody', 'warm', or 'crisp') to fit both the "
-        "vibe and footage colors. If has_video_audio is false, set "
-        "use_sfx=false on every clip and recommended_sfx_mix=0.0. If "
-        "has_video_audio is true, enable use_sfx=true ONLY on clips where "
-        "original sound elevates impact (engine roar, crowd cheer, whistle, "
-        "dialogue pause) and keep use_sfx=false on rapid drop cuts or "
-        "pure-music/AMV edits; set recommended_sfx_mix in 0.15-0.35 when "
-        "use_sfx clips exist, else 0.0. Input context:\n"
-        + json.dumps(payload, indent=2)
+        "(0.45s-1.2s) with zoom_punch/flash + expressive close-up payoffs on "
+        "drop/climax. Cut on beats_ms. Set recommended_grade ('moody', 'warm', "
+        "or 'crisp') to fit both the vibe and footage colors. If "
+        "has_video_audio is false, set use_sfx=false on every clip and "
+        "recommended_sfx_mix=0.0. If has_video_audio is true, enable "
+        "use_sfx=true ONLY on clips where original sound elevates impact "
+        "(engine roar, crowd cheer, whistle, dialogue pause) and keep "
+        "use_sfx=false on rapid drop cuts or pure-music/AMV edits; set "
+        "recommended_sfx_mix in 0.15-0.35 when use_sfx clips exist, else 0.0. "
+        "Input context:\n" + json.dumps(payload, indent=2)
     )
 
 

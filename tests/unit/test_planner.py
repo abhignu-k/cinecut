@@ -9,8 +9,10 @@ from cinecut.planner.solver import (
 )
 from cinecut.schemas import (
     AudioAnalysis,
+    CropRect,
     EditTimelineDraft,
     EffectType,
+    FramingMode,
     GradePreset,
     NarrativeRole,
     RationalFPS,
@@ -280,3 +282,21 @@ def test_solve_timeline_resolves_grade_and_selective_sfx(
             target_fps=RationalFPS(num=30, den=1),
             sfx_mix=1.5,
         )
+
+    ultrawide_cat = catalog.model_copy(
+        update={"active_crop": CropRect(x=0, y=138, w=1920, h=804)}
+    )
+    tl_auto_frame = solve_timeline(
+        draft,
+        audio,
+        ultrawide_cat,
+        source_video_path=tmp_path / "raw.mp4",
+        render_video_path=tmp_path / "proxy.mp4",
+        audio_path=tmp_path / "audio.wav",
+        target_fps=RationalFPS(num=30, den=1),
+        width=1440,
+        height=1080,
+        framing=FramingMode.AUTO,
+    )
+    assert tl_auto_frame.framing == FramingMode.BLUR
+    assert tl_auto_frame.source_crop == CropRect(x=0, y=138, w=1920, h=804)

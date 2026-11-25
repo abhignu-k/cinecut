@@ -1,5 +1,38 @@
 {
   "$defs": {
+    "CropRect": {
+      "description": "Even-aligned source crop stripping baked letterbox/pillarbox bars.",
+      "properties": {
+        "h": {
+          "minimum": 2,
+          "title": "H",
+          "type": "integer"
+        },
+        "w": {
+          "minimum": 2,
+          "title": "W",
+          "type": "integer"
+        },
+        "x": {
+          "minimum": 0,
+          "title": "X",
+          "type": "integer"
+        },
+        "y": {
+          "minimum": 0,
+          "title": "Y",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "title": "CropRect",
+      "type": "object"
+    },
     "EffectType": {
       "description": "Per-clip kinetic post-processing effects supported in v0.1.",
       "enum": [
@@ -12,6 +45,7 @@
     "FramingMode": {
       "description": "Target aspect framing strategy for source footage.",
       "enum": [
+        "auto",
         "blur",
         "cinema",
         "crop"
@@ -214,6 +248,17 @@
       "minimum": 0.0,
       "title": "Sfx Mix",
       "type": "number"
+    },
+    "source_crop": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CropRect"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "source_video_path": {
       "minLength": 1,

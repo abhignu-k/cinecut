@@ -113,8 +113,8 @@ def test_e2e_edit_mock_engine_produces_mp4_and_otio(tmp_path: Path) -> None:
     streams = _ffprobe_streams(out_mp4)
     v_stream = next(s for s in streams if s["codec_type"] == "video")
     a_stream = next(s for s in streams if s["codec_type"] == "audio")
-    assert v_stream["width"] == 1080
-    assert v_stream["height"] == 1350
+    assert v_stream["width"] == 1440
+    assert v_stream["height"] == 1080
     v_dur = float(str(v_stream["duration"]))
     a_dur = float(str(a_stream["duration"]))
     assert abs(v_dur - a_dur) <= 0.1
@@ -238,3 +238,62 @@ def test_e2e_ffmpeg_selective_sfx_with_atempo_and_fade(tmp_path: Path) -> None:
     v_dur = float(str(v_stream["duration"]))
     a_dur = float(str(a_stream["duration"]))
     assert abs(v_dur - a_dur) <= 0.1
+
+
+def test_e2e_letterbox_strip_and_auto_framing(tmp_path: Path) -> None:
+    _, audio = _create_synthetic_media(tmp_path)
+    lb_video = tmp_path / "letterboxed.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=640x240:rate=30:duration=4",
+            "-vf",
+            "pad=640:360:0:60:black",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(lb_video),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    out_mp4 = tmp_path / "lb_out.mp4"
+    out_otio = tmp_path / "lb_out.otio"
+    cache_dir = tmp_path / "lb_cache"
+    result = runner.invoke(
+        app,
+        [
+            "edit",
+            "--video",
+            str(lb_video),
+            "--audio",
+            str(audio),
+            "--vibe",
+            "dramatic comeback",
+            "--engine",
+            "mock",
+            "--duration",
+            "3.0",
+            "--out",
+            str(out_mp4),
+            "--otio",
+            str(out_otio),
+            "--cache-dir",
+            str(cache_dir),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["width"] == 1440
+    assert payload["height"] == 1080
+    timeline_data = json.loads(
+        Path(payload["timeline_json"]).read_text(encoding="utf-8")
+    )
+    assert timeline_data["source_crop"] is not None
+    assert timeline_data["framing"] == "blur"

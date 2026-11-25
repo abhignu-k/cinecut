@@ -7,6 +7,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field, model_validator
 
 from cinecut.schemas.timebase import RationalFPS
+from cinecut.schemas.vision import CropRect
 
 
 class TransitionType(StrEnum):
@@ -19,6 +20,7 @@ class TransitionType(StrEnum):
 class FramingMode(StrEnum):
     """Target aspect framing strategy for source footage."""
 
+    AUTO = "auto"
     BLUR = "blur"
     CINEMA = "cinema"
     CROP = "crop"
@@ -52,6 +54,45 @@ _ASPECT_DIMENSIONS: dict[AspectPreset, tuple[int, int]] = {
 }
 
 
+def resolve_output_spec(
+    aspect: AspectPreset,
+    framing: FramingMode,
+    src_w: int,
+    src_h: int,
+) -> tuple[int, int, FramingMode]:
+    """Resolve concrete `(width, height, framing)` for a source video size.
+
+    Args:
+        aspect: Requested aspect ratio preset or `AspectPreset.AUTO`.
+        framing: Requested framing strategy or `FramingMode.AUTO`.
+        src_w: Active source width in pixels (post-letterbox strip).
+        src_h: Active source height in pixels (post-letterbox strip).
+
+    Returns:
+        Concrete `(width, height, framing)` tuple.
+
+    Raises:
+        ValueError: If source dimensions are not positive integers.
+    """
+    if src_w <= 0 or src_h <= 0:
+        raise ValueError("Source width and height must be positive.")
+    if aspect == AspectPreset.AUTO:
+        width, height = (1440, 1080) if src_w >= src_h else (1080, 1920)
+    else:
+        width, height = _ASPECT_DIMENSIONS[aspect]
+
+    if framing != FramingMode.AUTO:
+        return width, height, framing
+
+    src_ratio = src_w / float(src_h)
+    target_ratio = width / float(height)
+    crop_loss = max(src_ratio / target_ratio, target_ratio / src_ratio)
+    resolved_framing = (
+        FramingMode.CROP if crop_loss <= 1.45 else FramingMode.BLUR
+    )
+    return width, height, resolved_framing
+
+
 def resolve_dimensions(
     aspect: AspectPreset, src_w: int, src_h: int
 ) -> tuple[int, int]:
@@ -68,11 +109,10 @@ def resolve_dimensions(
     Raises:
         ValueError: If source dimensions are not positive integers.
     """
-    if src_w <= 0 or src_h <= 0:
-        raise ValueError("Source width and height must be positive.")
-    if aspect == AspectPreset.AUTO:
-        return (1080, 1350) if src_w >= src_h else (1080, 1920)
-    return _ASPECT_DIMENSIONS[aspect]
+    width, height, _ = resolve_output_spec(
+        aspect, FramingMode.AUTO, src_w, src_h
+    )
+    return width, height
 
 
 class EffectType(StrEnum):
@@ -160,6 +200,7 @@ class EditTimeline(BaseModel):
     width: int = Field(default=1080, gt=0)
     height: int = Field(default=1920, gt=0)
     framing: FramingMode = FramingMode.BLUR
+    source_crop: CropRect | None = None
     grade: GradePreset = GradePreset.MOODY
     sfx_audio_path: str | None = None
     sfx_mix: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -169,6 +210,10 @@ class EditTimeline(BaseModel):
 
     @model_validator(mode="after")
     def _validate_contiguity(self) -> EditTimeline:
+        if self.framing == FramingMode.AUTO:
+            raise ValueError(
+                "EditTimeline.framing must be resolved to a concrete mode."
+            )
         if self.grade == GradePreset.AUTO:
             raise ValueError(
                 "EditTimeline.grade must be resolved to a concrete preset."

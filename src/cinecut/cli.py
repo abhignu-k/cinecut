@@ -51,7 +51,7 @@ from cinecut.schemas import (
     GradePreset,
     RationalFPS,
     ShotCatalog,
-    resolve_dimensions,
+    resolve_output_spec,
 )
 from cinecut.vision import index_video_shots
 
@@ -314,7 +314,7 @@ def plan(
     ] = AspectPreset.AUTO,
     framing: Annotated[
         FramingMode, typer.Option("--framing")
-    ] = FramingMode.BLUR,
+    ] = FramingMode.AUTO,
     grade: Annotated[GradePreset, typer.Option("--grade")] = GradePreset.AUTO,
     sfx_wav: Annotated[Path | None, typer.Option("--sfx-wav")] = None,
     sfx_mix: Annotated[str, typer.Option("--sfx-mix")] = "auto",
@@ -339,15 +339,16 @@ def plan(
         catalog = ShotCatalog.model_validate_json(
             shots_json.read_text(encoding="utf-8")
         )
-        src_info = (
-            probe_media(render_video) if aspect == AspectPreset.AUTO else None
+        if catalog.active_crop is not None:
+            src_w, src_h = catalog.active_crop.w, catalog.active_crop.h
+        elif aspect == AspectPreset.AUTO or framing == FramingMode.AUTO:
+            src_info = probe_media(render_video)
+            src_w, src_h = src_info.width, src_info.height
+        else:
+            src_w, src_h = 16, 9
+        width, height, resolved_framing = resolve_output_spec(
+            aspect, framing, src_w, src_h
         )
-        src_w, src_h = (
-            (src_info.width, src_info.height)
-            if src_info is not None
-            else (16, 9)
-        )
-        width, height = resolve_dimensions(aspect, src_w, src_h)
     except (OSError, ValidationError, ValueError, IngestError) as exc:
         typer.echo(f"Input error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
@@ -365,7 +366,7 @@ def plan(
             target_fps=RationalFPS(num=fps, den=1),
             width=width,
             height=height,
-            framing=framing,
+            framing=resolved_framing,
             grade=grade,
             sfx_audio_path=sfx_wav,
             sfx_mix=parsed_sfx_mix,
@@ -444,7 +445,7 @@ def edit(
     ] = AspectPreset.AUTO,
     framing: Annotated[
         FramingMode, typer.Option("--framing")
-    ] = FramingMode.BLUR,
+    ] = FramingMode.AUTO,
     grade: Annotated[
         GradePreset, typer.Option("--grade", help="Color grade preset.")
     ] = GradePreset.AUTO,
@@ -500,9 +501,6 @@ def edit(
                 if render_video == raw_video
                 else probe_media(raw_video)
             )
-            width, height = resolve_dimensions(
-                aspect, media_info.width, media_info.height
-            )
             sfx_wav = (
                 prepare_video_sfx(
                     raw_video, raw_info, cache_dir, use_cache=not no_cache
@@ -541,6 +539,19 @@ def edit(
                 has_audio=raw_info.has_audio,
                 use_cache=not no_cache,
             )
+            src_w = (
+                catalog.active_crop.w
+                if catalog.active_crop is not None
+                else media_info.width
+            )
+            src_h = (
+                catalog.active_crop.h
+                if catalog.active_crop is not None
+                else media_info.height
+            )
+            width, height, resolved_framing = resolve_output_spec(
+                aspect, framing, src_w, src_h
+            )
             if verbose and not quiet and not json_out:
                 err_console.print(
                     f"[dim][cinecut] BPM={audio_analysis.bpm:.1f}, "
@@ -574,7 +585,7 @@ def edit(
                 target_fps=RationalFPS(num=fps, den=1),
                 width=width,
                 height=height,
-                framing=framing,
+                framing=resolved_framing,
                 grade=grade,
                 sfx_audio_path=sfx_wav,
                 sfx_mix=parsed_sfx_mix,

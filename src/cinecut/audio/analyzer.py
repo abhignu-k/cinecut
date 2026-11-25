@@ -20,14 +20,61 @@ from cinecut.schemas import (
 )
 
 
+def _norm_series(
+    values: npt.NDArray[np.floating[Any]],
+) -> npt.NDArray[np.floating[Any]]:
+    """Robustly normalize a 1D curve into `[0.0, 1.0]` via percentiles."""
+    if len(values) == 0:
+        return values
+    peak = float(np.max(values))
+    if peak <= 1e-8:
+        return np.zeros_like(values)
+    lo_p = float(np.percentile(values, 10))
+    hi_p = float(np.percentile(values, 95))
+    span = hi_p - lo_p
+    if span > 1e-6:
+        return np.clip((values - lo_p) / span, 0.0, 1.0)
+    return values / peak
+
+
+def _build_chunk_bounds(
+    downbeats_ms: list[int], duration_ms: int
+) -> list[tuple[int, int]]:
+    """Build bar-aligned ~3.5s-8s section intervals spanning `[0, duration]`."""
+    if duration_ms <= 0:
+        return []
+    if len(downbeats_ms) >= 4:
+        bounds: list[tuple[int, int]] = []
+        cur = 0
+        for db in downbeats_ms[1:]:
+            if db - cur >= 3500 and duration_ms - db >= 2000:
+                bounds.append((cur, db))
+                cur = db
+        bounds.append((cur, duration_ms))
+        if len(bounds) >= 2:
+            return bounds
+
+    step_ms = 4000
+    chunk_bounds: list[tuple[int, int]] = []
+    cur = 0
+    while cur < duration_ms:
+        nxt = min(duration_ms, cur + step_ms)
+        if duration_ms - nxt < 1000:
+            nxt = duration_ms
+        chunk_bounds.append((cur, nxt))
+        cur = nxt
+    return chunk_bounds
+
+
 def _classify_sections(
-    rms: npt.NDArray[np.floating[Any]],
+    composite: npt.NDArray[np.floating[Any]],
     hop_length: int,
     sr: int,
     duration_ms: int,
+    downbeats_ms: list[int],
 ) -> list[SongSection]:
-    """Segment normalized RMS envelope into ordered musical sections."""
-    if len(rms) == 0:
+    """Segment composite energy curve into bar-aligned musical sections."""
+    if len(composite) == 0:
         return [
             SongSection(
                 start_ms=0,
@@ -37,44 +84,56 @@ def _classify_sections(
             )
         ]
 
-    peak = float(np.max(rms))
-    if peak <= 1e-8:
-        norm_rms = np.zeros_like(rms)
-    else:
-        lo_p = float(np.percentile(rms, 10))
-        hi_p = float(np.percentile(rms, 95))
-        span = hi_p - lo_p
-        if span > 1e-6:
-            norm_rms = np.clip((rms - lo_p) / span, 0.0, 1.0)
-        else:
-            norm_rms = rms / peak
+    norm_env = _norm_series(composite)
+    bounds = _build_chunk_bounds(downbeats_ms, duration_ms)
+    n_frames = len(norm_env)
+    spans_stats: list[tuple[int, int, float, float]] = []
 
-    chunk_frames = max(1, int((4.0 * sr) / hop_length))
-    n_chunks = max(1, int(np.ceil(len(norm_rms) / chunk_frames)))
-    raw_sections: list[SongSection] = []
-
-    for idx in range(n_chunks):
-        lo = idx * chunk_frames
-        hi = min(len(norm_rms), (idx + 1) * chunk_frames)
-        start_ms = round((lo * hop_length / sr) * 1000)
-        end_ms = (
-            duration_ms
-            if idx == n_chunks - 1
-            else round((hi * hop_length / sr) * 1000)
+    for start_ms, end_ms in bounds:
+        lo = min(
+            n_frames - 1, max(0, round((start_ms / 1000.0) * sr / hop_length))
         )
-        if end_ms <= start_ms:
-            continue
-        seg = norm_rms[lo:hi]
+        hi = min(
+            n_frames,
+            max(lo + 1, round((end_ms / 1000.0) * sr / hop_length)),
+        )
+        seg = norm_env[lo:hi]
         energy = float(np.clip(np.mean(seg), 0.0, 1.0))
         slope = float(seg[-1] - seg[0]) if len(seg) > 1 else 0.0
+        spans_stats.append((start_ms, end_ms, energy, slope))
 
+    if not spans_stats:
+        return [
+            SongSection(
+                start_ms=0,
+                end_ms=duration_ms,
+                label=SectionLabel.DROP,
+                energy=0.5,
+            )
+        ]
+
+    energies = [stat[2] for stat in spans_stats]
+    max_e = max(energies)
+    drop_thresh = min(0.70, max(0.56, float(np.percentile(energies, 72))))
+    n_chunks = len(spans_stats)
+    raw_sections: list[SongSection] = []
+
+    for idx, (start_ms, end_ms, energy, slope) in enumerate(spans_stats):
+        nbr_lo = max(0, idx - 2)
+        nbr_hi = min(n_chunks, idx + 3)
+        local_med = float(np.median(energies[nbr_lo:nbr_hi]))
+        is_peak_plateau = (
+            max_e >= 0.50
+            and energy >= 0.88 * max_e
+            and energy - local_med >= 0.05
+        )
         if idx == 0 and energy < 0.45:
             label = SectionLabel.INTRO
         elif idx == n_chunks - 1 and energy < 0.45:
             label = SectionLabel.OUTRO
-        elif energy >= 0.72:
+        elif energy >= drop_thresh or is_peak_plateau:
             label = SectionLabel.DROP
-        elif slope > 0.08 or energy >= 0.45:
+        elif slope > 0.08 or energy >= 0.42:
             label = SectionLabel.BUILDUP
         else:
             label = SectionLabel.BRIDGE
@@ -87,16 +146,6 @@ def _classify_sections(
                 energy=energy,
             )
         )
-
-    if not raw_sections:
-        return [
-            SongSection(
-                start_ms=0,
-                end_ms=duration_ms,
-                label=SectionLabel.DROP,
-                energy=0.5,
-            )
-        ]
     return raw_sections
 
 
@@ -152,12 +201,32 @@ def analyze_audio(
 
     downbeats_ms = beats_ms[::4] if beats_ms else [0]
     rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
-    sections = _classify_sections(rms, hop_length, sr, duration_ms)
+    stft_mag = np.abs(librosa.stft(y, n_fft=2048, hop_length=hop_length))
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
+    bass_mask = (freqs >= 20.0) & (freqs <= 200.0)
+    vocal_mask = (freqs >= 300.0) & (freqs <= 3400.0)
+    bass_e = np.sqrt(np.mean(stft_mag[bass_mask] ** 2, axis=0))
+    vocal_e = np.sqrt(np.mean(stft_mag[vocal_mask] ** 2, axis=0))
+    onset_e = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+    n_frames = min(len(rms), len(bass_e), len(vocal_e), len(onset_e))
+    composite = (
+        0.45 * _norm_series(rms[:n_frames])
+        + 0.30 * _norm_series(bass_e[:n_frames])
+        + 0.25
+        * (
+            0.5 * _norm_series(vocal_e[:n_frames])
+            + 0.5 * _norm_series(onset_e[:n_frames])
+        )
+    )
+    sections = _classify_sections(
+        composite, hop_length, sr, duration_ms, downbeats_ms
+    )
 
     win_start, win_end = select_highlight_window(
         duration_ms=duration_ms,
         sections=sections,
         target_duration_ms=target_duration_ms,
+        beats_ms=beats_ms,
         audio_start_ms=audio_start_ms,
         full_audio=full_audio,
     )

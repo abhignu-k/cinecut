@@ -106,3 +106,54 @@ def test_extract_stem_curves_missing_demucs(
     monkeypatch.setitem(sys.modules, "demucs", None)
     with pytest.raises(MissingExtraError, match="cinecut\\[stems\\]"):
         extract_stem_curves(wav, [0, 500, 1000], 2000)
+
+
+def test_select_highlight_window_beats_and_groovy_drop(
+    tmp_path: Path,
+) -> None:
+    sections = [
+        SongSection(
+            start_ms=0, end_ms=10000, label=SectionLabel.DROP, energy=0.80
+        ),
+        SongSection(
+            start_ms=10000,
+            end_ms=25000,
+            label=SectionLabel.BUILDUP,
+            energy=0.52,
+        ),
+        SongSection(
+            start_ms=25000, end_ms=55000, label=SectionLabel.DROP, energy=0.88
+        ),
+        SongSection(
+            start_ms=55000,
+            end_ms=70000,
+            label=SectionLabel.OUTRO,
+            energy=0.35,
+        ),
+    ]
+    beats = list(range(0, 70001, 500))
+    start, end = select_highlight_window(
+        duration_ms=70000,
+        sections=sections,
+        target_duration_ms=30000,
+        beats_ms=beats,
+    )
+    assert end - start == 30000
+    assert start in beats
+    assert 10000 <= start <= 25000
+
+    # Ensure steady-groove synthetic song surfaces DROP via adaptive threshold.
+    sr = 22050
+    t_total = np.linspace(0.0, 16.0, int(16.0 * sr), endpoint=False)
+    env = np.where((t_total >= 6.0) & (t_total <= 12.0), 0.72, 0.45)
+    sig = (
+        env
+        * (
+            0.5 * np.sin(2 * np.pi * 90.0 * t_total)
+            + 0.5 * np.sin(2 * np.pi * 660.0 * t_total)
+        )
+    ).astype(np.float32)
+    groove_wav = tmp_path / "groove.wav"
+    sf.write(str(groove_wav), sig, sr)
+    analysis = analyze_audio(groove_wav, target_duration_ms=8000)
+    assert any(s.label == SectionLabel.DROP for s in analysis.sections)

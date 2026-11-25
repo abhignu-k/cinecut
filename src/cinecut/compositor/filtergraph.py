@@ -52,6 +52,11 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
     width = timeline.width - (timeline.width % 2)
     height = timeline.height - (timeline.height % 2)
     grade_filters = list(_GRADE_FILTERS.get(timeline.grade, ()))
+    crop_prefix = (
+        [f"crop={sc.w}:{sc.h}:{sc.x}:{sc.y}"]
+        if (sc := timeline.source_crop) is not None
+        else []
+    )
     use_sfx = timeline.has_active_sfx()
     lines: list[str] = []
     video_labels: list[str] = []
@@ -68,6 +73,7 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
             f"trim=start={src_s:.6f}:end={src_e:.6f}",
             f"setpts=(PTS-STARTPTS)/{clip.speed:.6f}",
             "scale=iw*sar:ih,setsar=1",
+            *crop_prefix,
             *grade_filters,
         ]
 

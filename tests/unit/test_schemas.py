@@ -7,10 +7,12 @@ from pydantic import ValidationError
 from cinecut.schemas import (
     AspectPreset,
     AudioAnalysis,
+    CropRect,
     EditTimeline,
     EditTimelineDraft,
     EffectType,
     EngineType,
+    FramingMode,
     GradePreset,
     MediaInfo,
     NarrativeRole,
@@ -28,6 +30,7 @@ from cinecut.schemas import (
     TransitionType,
     export_json_schemas,
     resolve_dimensions,
+    resolve_output_spec,
 )
 
 
@@ -248,8 +251,19 @@ def test_export_json_schemas(tmp_path: Path) -> None:
 
 
 def test_resolve_dimensions_and_v02_schemas() -> None:
-    assert resolve_dimensions(AspectPreset.AUTO, 1920, 1080) == (1080, 1350)
+    assert resolve_dimensions(AspectPreset.AUTO, 1920, 1080) == (1440, 1080)
     assert resolve_dimensions(AspectPreset.AUTO, 1080, 1920) == (1080, 1920)
+    assert resolve_output_spec(
+        AspectPreset.AUTO, FramingMode.AUTO, 1920, 1080
+    ) == (1440, 1080, FramingMode.CROP)
+    assert resolve_output_spec(
+        AspectPreset.AUTO, FramingMode.AUTO, 1920, 804
+    ) == (1440, 1080, FramingMode.BLUR)
+    assert resolve_output_spec(
+        AspectPreset.AUTO, FramingMode.AUTO, 1080, 1920
+    ) == (1080, 1920, FramingMode.CROP)
+    rect = CropRect(x=0, y=138, w=1920, h=804)
+    assert rect.h == 804
     assert resolve_dimensions(AspectPreset.PORTRAIT_4_5, 1920, 1080) == (
         1080,
         1350,
@@ -294,6 +308,26 @@ def test_resolve_dimensions_and_v02_schemas() -> None:
             audio_path="audio.wav",
             target_fps=RationalFPS(num=30, den=1),
             grade=GradePreset.AUTO,
+            audio_start_ms=0,
+            audio_duration_ms=1000,
+            clips=[
+                TimelineClip(
+                    shot_id="s1",
+                    src_start_ms=0,
+                    src_end_ms=1000,
+                    dst_start_ms=0,
+                    dst_end_ms=1000,
+                )
+            ],
+        )
+
+    with pytest.raises(ValidationError):
+        EditTimeline(
+            source_video_path="raw.mp4",
+            render_video_path="proxy.mp4",
+            audio_path="audio.wav",
+            target_fps=RationalFPS(num=30, den=1),
+            framing=FramingMode.AUTO,
             audio_start_ms=0,
             audio_duration_ms=1000,
             clips=[

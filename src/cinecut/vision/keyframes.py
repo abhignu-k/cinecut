@@ -10,9 +10,13 @@ from pathlib import Path
 import cv2
 
 from cinecut.ingest.prepare import compute_media_hash
-from cinecut.schemas import RationalFPS, ShotCatalog, ShotMetadata
+from cinecut.schemas import CropRect, RationalFPS, ShotCatalog, ShotMetadata
 from cinecut.vision.detector import detect_shots
-from cinecut.vision.scoring import score_shot
+from cinecut.vision.scoring import (
+    _apply_crop_rect,
+    analyze_shot,
+    detect_active_crop_rect,
+)
 
 
 def _resize_for_ai(
@@ -34,6 +38,8 @@ def extract_keyframes(
     end_ms: int,
     fps: RationalFPS,
     out_dir: Path,
+    *,
+    active_crop: CropRect | None = None,
 ) -> list[str]:
     """Extract up to 3 representative JPEGs (start, mid, end) for a shot."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -50,7 +56,8 @@ def extract_keyframes(
         ok, frame = cap.read()
         if not ok or frame is None:
             continue
-        resized = _resize_for_ai(frame)
+        cropped = _apply_crop_rect(frame, active_crop)
+        resized = _resize_for_ai(cropped)
         out_path = out_dir / f"{shot_id}_{idx}.jpg"
         cv2.imwrite(
             str(out_path),
@@ -94,6 +101,7 @@ def index_video_shots(
             return cached.model_copy(update={"has_audio": True})
         return cached
 
+    active_crop = detect_active_crop_rect(video_path)
     spans = detect_shots(video_path, video_fps, max_shot_ms=max_shot_ms)
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -107,20 +115,30 @@ def index_video_shots(
     try:
         for idx, (start_ms, end_ms) in enumerate(spans, start=1):
             shot_id = f"shot_{idx:04d}"
-            motion, sharpness, crop_x = score_shot(
-                cap, start_ms, end_ms, video_fps
+            profile = analyze_shot(
+                cap, start_ms, end_ms, video_fps, active_crop=active_crop
             )
             kf_paths = extract_keyframes(
-                cap, shot_id, start_ms, end_ms, video_fps, keyframes_dir
+                cap,
+                shot_id,
+                start_ms,
+                end_ms,
+                video_fps,
+                keyframes_dir,
+                active_crop=active_crop,
             )
             shots.append(
                 ShotMetadata(
                     shot_id=shot_id,
                     start_ms=start_ms,
                     end_ms=end_ms,
-                    motion_score=motion,
-                    sharpness_score=sharpness,
-                    crop_x_norm=crop_x,
+                    motion_score=profile.motion_score,
+                    sharpness_score=profile.sharpness_score,
+                    crop_x_norm=profile.crop_x_norm,
+                    face_ratio=profile.face_ratio,
+                    text_clutter_score=profile.text_clutter_score,
+                    is_dark_or_flat=profile.is_dark_or_flat,
+                    shot_tag=profile.shot_tag,
                     keyframe_paths=kf_paths,
                 )
             )
@@ -131,6 +149,7 @@ def index_video_shots(
         source_path=str(video_path),
         video_fps=video_fps,
         has_audio=has_audio,
+        active_crop=active_crop,
         shots=shots,
     )
     media_cache.mkdir(parents=True, exist_ok=True)

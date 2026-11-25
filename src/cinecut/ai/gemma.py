@@ -11,10 +11,9 @@ from pydantic import ValidationError
 
 from cinecut.ai.base import AIBackendError
 from cinecut.ai.prompts import (
+    build_contact_sheets,
     build_editing_prompt,
     build_song_recommendation_prompt,
-    select_representative_shots,
-    stitch_keyframe_strip,
 )
 from cinecut.schemas import (
     AudioAnalysis,
@@ -66,18 +65,16 @@ class GemmaBackend:
         schema_name: str,
     ) -> Any:
         """Query Ollama `/api/chat` with keyframes and bounded JSON repair."""
-        images_b64: list[str] = []
-        attached_ids: list[str] = []
-        for shot in select_representative_shots(catalog.shots, limit=8):
-            strip = stitch_keyframe_strip(shot.keyframe_paths)
-            if strip is not None:
-                images_b64.append(base64.b64encode(strip).decode("ascii"))
-                attached_ids.append(shot.shot_id)
+        sheets = build_contact_sheets(catalog.shots, max_shots=32)
+        images_b64 = [
+            base64.b64encode(sheet).decode("ascii") for sheet in sheets
+        ]
 
         full_prompt = prompt
-        if attached_ids:
-            full_prompt += "\nAttached keyframe strips order: " + ", ".join(
-                attached_ids
+        if images_b64:
+            full_prompt += (
+                "\nAttached images are labeled 4x4 keyframe contact sheets "
+                "(tiles stamped with shot_id)."
             )
 
         messages: list[dict[str, object]] = [

@@ -1,5 +1,38 @@
 {
   "$defs": {
+    "CropRect": {
+      "description": "Even-aligned source crop stripping baked letterbox/pillarbox bars.",
+      "properties": {
+        "h": {
+          "minimum": 2,
+          "title": "H",
+          "type": "integer"
+        },
+        "w": {
+          "minimum": 2,
+          "title": "W",
+          "type": "integer"
+        },
+        "x": {
+          "minimum": 0,
+          "title": "X",
+          "type": "integer"
+        },
+        "y": {
+          "minimum": 0,
+          "title": "Y",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "title": "CropRect",
+      "type": "object"
+    },
     "RationalFPS": {
       "description": "Exact rational frame rate (e.g., 30000/1001 for 29.97 fps).",
       "properties": {
@@ -24,7 +57,7 @@
       "type": "object"
     },
     "ShotMetadata": {
-      "description": "Indexed visual shot with motion, sharpness, and crop anchor.",
+      "description": "Indexed visual shot with motion, sharpness, and framing metadata.",
       "properties": {
         "crop_x_norm": {
           "default": 0.5,
@@ -37,6 +70,18 @@
           "exclusiveMinimum": 0,
           "title": "End Ms",
           "type": "integer"
+        },
+        "face_ratio": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Face Ratio",
+          "type": "number"
+        },
+        "is_dark_or_flat": {
+          "default": false,
+          "title": "Is Dark Or Flat",
+          "type": "boolean"
         },
         "keyframe_paths": {
           "items": {
@@ -62,10 +107,22 @@
           "title": "Shot Id",
           "type": "string"
         },
+        "shot_tag": {
+          "default": "action",
+          "title": "Shot Tag",
+          "type": "string"
+        },
         "start_ms": {
           "minimum": 0,
           "title": "Start Ms",
           "type": "integer"
+        },
+        "text_clutter_score": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Text Clutter Score",
+          "type": "number"
         }
       },
       "required": [
@@ -81,6 +138,17 @@
   },
   "description": "Ordered catalog of visual shots indexed from a source/proxy video.",
   "properties": {
+    "active_crop": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CropRect"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "has_audio": {
       "default": false,
       "title": "Has Audio",

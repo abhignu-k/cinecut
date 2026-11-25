@@ -10,6 +10,7 @@ from cinecut.compositor import (
     render_timeline,
 )
 from cinecut.schemas import (
+    CropRect,
     EditTimeline,
     EffectType,
     FramingMode,
@@ -192,3 +193,9 @@ def test_filtergraph_aspects_grades_and_selective_sfx(tmp_path: Path) -> None:
     tl_none = tl_warm.model_copy(update={"grade": GradePreset.NONE})
     script_none = build_filter_complex_script(tl_none)
     assert "vignette=" not in script_none
+
+    tl_cropped = tl_warm.model_copy(
+        update={"source_crop": CropRect(x=0, y=138, w=1920, h=804)}
+    )
+    script_cropped = build_filter_complex_script(tl_cropped)
+    assert "scale=iw*sar:ih,setsar=1,crop=1920:804:0:138," in script_cropped
