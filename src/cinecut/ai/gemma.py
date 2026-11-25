@@ -37,7 +37,7 @@ class GemmaBackend:
     def __init__(
         self,
         local_url: str = "http://127.0.0.1:11434",
-        model: str = "gemma3:12b",
+        model: str = "gemma4:e4b",
         client: httpx.Client | None = None,
         max_retries: int = 2,
     ) -> None:

@@ -202,7 +202,7 @@ def plan(
     local_url: Annotated[
         str, typer.Option("--local-url")
     ] = "http://127.0.0.1:11434",
-    local_model: Annotated[str, typer.Option("--local-model")] = "gemma3:12b",
+    local_model: Annotated[str, typer.Option("--local-model")] = "gemma4:e4b",
     out_json: Annotated[Path, typer.Option("--out-json")] = Path(
         "timeline.json"
     ),
@@ -314,7 +314,7 @@ def edit(
     local_url: Annotated[
         str, typer.Option("--local-url")
     ] = "http://127.0.0.1:11434",
-    local_model: Annotated[str, typer.Option("--local-model")] = "gemma3:12b",
+    local_model: Annotated[str, typer.Option("--local-model")] = "gemma4:e4b",
     json_out: Annotated[bool, typer.Option("--json")] = False,
     quiet: Annotated[bool, typer.Option("--quiet")] = False,
     verbose: Annotated[bool, typer.Option("--verbose")] = False,

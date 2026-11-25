@@ -96,16 +96,18 @@ cinecut edit \
 ### 2. 100% Offline Local Mode (`--engine gemma` via Ollama)
 
 ```bash
-ollama pull gemma3:12b
+ollama pull gemma4:e4b
 cinecut edit \
   --video race_highlights.mp4 \
   --audio track.wav \
   --vibe "aggressive night drive" \
   --engine gemma \
-  --local-model gemma3:12b \
+  --local-model gemma4:e4b \
   --out edit.mp4 \
   --otio edit.otio
 ```
+
+*(You can also pass larger multimodal Gemma 4 variants such as `gemma4:12b` or `gemma4:26b` via `--local-model`.)*
 
 ### 3. Inspect FFmpeg Filtergraph Without Rendering
 
