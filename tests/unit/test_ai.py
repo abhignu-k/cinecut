@@ -113,6 +113,44 @@ def test_gemini_backend_parses_structured_response() -> None:
     assert draft.clips[0].shot_id == "shot_0002"
 
 
+def test_gemini_backend_retries_and_falls_back_on_503() -> None:
+    audio, catalog = _sample_inputs()
+    expected = EditTimelineDraft(
+        clips=[
+            TimelineClipDraft(
+                shot_id="shot_0001",
+                src_start_ms=0,
+                src_end_ms=2000,
+                dst_start_ms=0,
+                dst_end_ms=2000,
+            )
+        ]
+    )
+    calls: list[str] = []
+
+    class FlakyModels:
+        def generate_content(self, **kwargs: object) -> object:
+            model = str(kwargs["model"])
+            calls.append(model)
+            if model == "gemini-4-hydrogen":
+                raise RuntimeError("503 UNAVAILABLE")
+            return SimpleNamespace(text=expected.model_dump_json())
+
+    backend = GeminiBackend(
+        model="gemini-4-hydrogen",
+        client=SimpleNamespace(models=FlakyModels()),
+        max_retries=1,
+        sleep_fn=lambda _: None,
+    )
+    draft = backend.generate_draft(audio, catalog, "test")
+    assert calls == [
+        "gemini-4-hydrogen",
+        "gemini-4-hydrogen",
+        "gemini-3.8-flash",
+    ]
+    assert draft.clips[0].shot_id == "shot_0001"
+
+
 def test_gemma_backend_enforces_local_url_and_repairs_json() -> None:
     audio, catalog = _sample_inputs()
 
