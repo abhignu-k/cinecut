@@ -13,6 +13,7 @@ from cinecut.schemas import (
     EditTimeline,
     EffectType,
     FramingMode,
+    GradePreset,
     NarrativeRole,
     RationalFPS,
     TimelineClip,
@@ -125,3 +126,66 @@ def test_filtergraph_clamps_short_audio_fades(tmp_path: Path) -> None:
     script = build_filter_complex_script(short_tl)
     assert "afade=t=in:st=0:d=0.100000" in script
     assert "afade=t=out:st=0.200000:d=0.100000" in script
+
+
+def test_filtergraph_aspects_grades_and_selective_sfx(tmp_path: Path) -> None:
+    sfx_wav = tmp_path / "sfx.wav"
+    sfx_wav.write_bytes(b"wav")
+    tl_warm = EditTimeline(
+        source_video_path=str(tmp_path / "raw.mp4"),
+        render_video_path=str(tmp_path / "proxy.mp4"),
+        audio_path=str(tmp_path / "audio.wav"),
+        target_fps=RationalFPS(num=30, den=1),
+        width=1440,
+        height=1080,
+        framing=FramingMode.CROP,
+        grade=GradePreset.WARM,
+        sfx_audio_path=str(sfx_wav),
+        sfx_mix=0.25,
+        audio_start_ms=0,
+        audio_duration_ms=2000,
+        clips=[
+            TimelineClip(
+                shot_id="s1",
+                src_start_ms=0,
+                src_end_ms=250,
+                dst_start_ms=0,
+                dst_end_ms=1000,
+                speed=0.25,
+                sfx_gain=0.25,
+            ),
+            TimelineClip(
+                shot_id="s2",
+                src_start_ms=500,
+                src_end_ms=1500,
+                dst_start_ms=1000,
+                dst_end_ms=2000,
+                speed=1.0,
+                sfx_gain=0.0,
+            ),
+        ],
+    )
+    script = build_filter_complex_script(tl_warm)
+    assert "crop=w='min(iw,ih*1440/1080)'" in script
+    assert "scale=1440:1080:flags=lanczos,setsar=1" in script
+    assert "colorbalance=rs=0.06:gs=0.01:bs=-0.05" in script
+    assert "atempo=0.500000,atempo=0.500000,volume=0.2500" in script
+    assert (
+        "[2:a]atrim=start=0.500000:end=1.500000,asetpts=PTS-STARTPTS,volume=0.0000[as1]"
+        in script
+    )
+    assert (
+        "[amusic][asfx]amix=inputs=2:duration=first:normalize=0[aout]" in script
+    )
+
+    cmd = render_timeline(
+        tl_warm,
+        tmp_path / "out.mp4",
+        script_path=tmp_path / "warm.ffscript",
+        dry_run=True,
+    )
+    assert cmd.count("-i") == 3
+
+    tl_none = tl_warm.model_copy(update={"grade": GradePreset.NONE})
+    script_none = build_filter_complex_script(tl_none)
+    assert "vignette=" not in script_none

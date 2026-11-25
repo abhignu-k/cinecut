@@ -1,0 +1,66 @@
+{
+  "$defs": {
+    "SongRecommendation": {
+      "description": "AI-suggested track fitting the footage pacing and director vibe.",
+      "properties": {
+        "artist": {
+          "minLength": 1,
+          "title": "Artist",
+          "type": "string"
+        },
+        "energy_arc": {
+          "minLength": 1,
+          "title": "Energy Arc",
+          "type": "string"
+        },
+        "fit_reason": {
+          "minLength": 1,
+          "title": "Fit Reason",
+          "type": "string"
+        },
+        "target_bpm": {
+          "maximum": 240,
+          "minimum": 40,
+          "title": "Target Bpm",
+          "type": "integer"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "yt_search_query": {
+          "minLength": 1,
+          "title": "Yt Search Query",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "artist",
+        "target_bpm",
+        "energy_arc",
+        "fit_reason",
+        "yt_search_query"
+      ],
+      "title": "SongRecommendation",
+      "type": "object"
+    }
+  },
+  "description": "Ordered set of AI-recommended tracks for a video + vibe.",
+  "properties": {
+    "recommendations": {
+      "items": {
+        "$ref": "#/$defs/SongRecommendation"
+      },
+      "minItems": 1,
+      "title": "Recommendations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "recommendations"
+  ],
+  "title": "SongRecommendationList",
+  "type": "object"
+}

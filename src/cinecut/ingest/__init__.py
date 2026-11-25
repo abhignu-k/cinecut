@@ -5,6 +5,7 @@ from cinecut.ingest.prepare import (
     needs_proxy,
     prepare_audio,
     prepare_video,
+    prepare_video_sfx,
 )
 from cinecut.ingest.probe import IngestError, probe_media
 from cinecut.ingest.youtube import (
@@ -21,6 +22,7 @@ __all__ = [
     "needs_proxy",
     "prepare_audio",
     "prepare_video",
+    "prepare_video_sfx",
     "probe_media",
     "resolve_media_source",
 ]

@@ -9,6 +9,18 @@
       "title": "EffectType",
       "type": "string"
     },
+    "GradePreset": {
+      "description": "Supported cinematic color-grading presets.",
+      "enum": [
+        "auto",
+        "moody",
+        "warm",
+        "crisp",
+        "none"
+      ],
+      "title": "GradePreset",
+      "type": "string"
+    },
     "NarrativeRole": {
       "description": "Story arc role assigned to a timeline clip.",
       "enum": [
@@ -71,6 +83,11 @@
         "transition": {
           "$ref": "#/$defs/TransitionType",
           "default": "cut"
+        },
+        "use_sfx": {
+          "default": false,
+          "title": "Use Sfx",
+          "type": "boolean"
         }
       },
       "required": [
@@ -102,6 +119,17 @@
       "minItems": 1,
       "title": "Clips",
       "type": "array"
+    },
+    "recommended_grade": {
+      "$ref": "#/$defs/GradePreset",
+      "default": "moody"
+    },
+    "recommended_sfx_mix": {
+      "default": 0.0,
+      "maximum": 0.5,
+      "minimum": 0.0,
+      "title": "Recommended Sfx Mix",
+      "type": "number"
     }
   },
   "required": [

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 from pydantic import ValidationError
@@ -37,22 +37,27 @@ from cinecut.ingest import (
     MissingExtraError,
     prepare_audio,
     prepare_video,
+    prepare_video_sfx,
+    probe_media,
     resolve_media_source,
 )
 from cinecut.planner import PlannerError, solve_timeline
 from cinecut.schemas import (
+    AspectPreset,
     AudioAnalysis,
     EditTimeline,
     EngineType,
     FramingMode,
+    GradePreset,
     RationalFPS,
     ShotCatalog,
+    resolve_dimensions,
 )
 from cinecut.vision import index_video_shots
 
 app = typer.Typer(
     name="cinecut",
-    help="cinecut: Context-aware AI cinematic vertical edit engine.",
+    help="cinecut: Context-aware AI multi-genre cinematic edit engine.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -78,6 +83,24 @@ def _build_backend(
     if engine == EngineType.GEMMA:
         return GemmaBackend(local_url=local_url, model=local_model)
     return GeminiBackend(model=gemini_model)
+
+
+def _parse_sfx_mix(raw_value: str) -> float | Literal["auto"]:
+    """Parse CLI `--sfx-mix` as `'auto'` or float in `[0.0, 1.0]`."""
+    cleaned = raw_value.strip().lower()
+    if cleaned == "auto":
+        return "auto"
+    try:
+        parsed = float(cleaned)
+    except ValueError as exc:
+        raise typer.BadParameter(
+            "sfx-mix must be 'auto' or a float in [0.0, 1.0]."
+        ) from exc
+    if not (0.0 <= parsed <= 1.0):
+        raise typer.BadParameter(
+            "sfx-mix must be 'auto' or a float in [0.0, 1.0]."
+        )
+    return parsed
 
 
 @app.callback()
@@ -157,6 +180,12 @@ def analyze(
         render_video, media_info = prepare_video(
             raw_video, cache_dir, use_cache=not no_cache
         )
+        raw_info = (
+            media_info if render_video == raw_video else probe_media(raw_video)
+        )
+        sfx_wav = prepare_video_sfx(
+            raw_video, raw_info, cache_dir, use_cache=not no_cache
+        )
         wav_path = prepare_audio(raw_audio, cache_dir, use_cache=not no_cache)
         audio_analysis = analyze_audio(
             wav_path,
@@ -171,6 +200,7 @@ def analyze(
             render_video,
             media_info.fps,
             cache_dir,
+            has_audio=raw_info.has_audio,
             use_cache=not no_cache,
         )
     except (FileNotFoundError, IngestError, MissingExtraError) as exc:
@@ -195,10 +225,78 @@ def analyze(
                     "source_video": str(raw_video),
                     "render_video": str(render_video),
                     "audio_wav": str(wav_path),
+                    "sfx_wav": str(sfx_wav) if sfx_wav else None,
                 },
                 indent=2,
             )
         )
+
+
+@app.command()
+def recommend(
+    video: Annotated[str, typer.Option("--video", help="Video file or URL.")],
+    vibe: Annotated[str, typer.Option("--vibe", help="Director intent.")],
+    engine: Annotated[EngineType, typer.Option("--engine")] = EngineType.GEMINI,
+    count: Annotated[int, typer.Option("--count", min=1, max=15)] = 5,
+    gemini_model: Annotated[
+        str, typer.Option("--gemini-model")
+    ] = "gemini-3.8-flash",
+    local_url: Annotated[
+        str, typer.Option("--local-url")
+    ] = "http://127.0.0.1:11434",
+    local_model: Annotated[str, typer.Option("--local-model")] = "gemma4:e4b",
+    cache_dir: Annotated[Path, typer.Option("--cache-dir")] = Path(
+        ".cinecut_cache"
+    ),
+    no_cache: Annotated[bool, typer.Option("--no-cache")] = False,
+    json_out: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Analyze video rhythm and recommend fitting songs + ytsearch queries."""
+    try:
+        raw_video = resolve_media_source(video, cache_dir, kind="video")
+        render_video, media_info = prepare_video(
+            raw_video, cache_dir, use_cache=not no_cache
+        )
+        raw_info = (
+            media_info if render_video == raw_video else probe_media(raw_video)
+        )
+        catalog = index_video_shots(
+            render_video,
+            media_info.fps,
+            cache_dir,
+            has_audio=raw_info.has_audio,
+            use_cache=not no_cache,
+        )
+    except (FileNotFoundError, IngestError, MissingExtraError) as exc:
+        typer.echo(f"Ingest/analysis error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    try:
+        backend = _build_backend(engine, local_url, local_model, gemini_model)
+        rec_list = backend.recommend_songs(catalog, vibe, count=count)
+    except AIBackendError as exc:
+        typer.echo(f"Recommendation error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    if json_out:
+        typer.echo(rec_list.model_dump_json(indent=2))
+        return
+
+    table = Table(title="cinecut song recommendations")
+    table.add_column("#")
+    table.add_column("Track")
+    table.add_column("BPM")
+    table.add_column("Fit Reason")
+    table.add_column("Audio Query (--audio)")
+    for idx, rec in enumerate(rec_list.recommendations, start=1):
+        table.add_row(
+            str(idx),
+            f"{rec.artist} - {rec.title}",
+            str(rec.target_bpm),
+            rec.fit_reason,
+            rec.yt_search_query,
+        )
+    console.print(table)
 
 
 @app.command()
@@ -211,9 +309,15 @@ def plan(
     vibe: Annotated[str, typer.Option("--vibe")],
     engine: Annotated[EngineType, typer.Option("--engine")] = EngineType.GEMINI,
     fps: Annotated[int, typer.Option("--fps", min=1, max=120)] = 30,
+    aspect: Annotated[
+        AspectPreset, typer.Option("--aspect")
+    ] = AspectPreset.AUTO,
     framing: Annotated[
         FramingMode, typer.Option("--framing")
     ] = FramingMode.BLUR,
+    grade: Annotated[GradePreset, typer.Option("--grade")] = GradePreset.AUTO,
+    sfx_wav: Annotated[Path | None, typer.Option("--sfx-wav")] = None,
+    sfx_mix: Annotated[str, typer.Option("--sfx-mix")] = "auto",
     gemini_model: Annotated[
         str, typer.Option("--gemini-model")
     ] = "gemini-3.8-flash",
@@ -227,6 +331,7 @@ def plan(
     json_out: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Generate and deterministically validate an EditTimeline JSON."""
+    parsed_sfx_mix = _parse_sfx_mix(sfx_mix)
     try:
         audio_analysis = AudioAnalysis.model_validate_json(
             audio_json.read_text(encoding="utf-8")
@@ -234,7 +339,13 @@ def plan(
         catalog = ShotCatalog.model_validate_json(
             shots_json.read_text(encoding="utf-8")
         )
-    except (OSError, ValidationError, ValueError) as exc:
+        src_w, src_h = (
+            (probe_media(render_video).width, probe_media(render_video).height)
+            if aspect == AspectPreset.AUTO
+            else (16, 9)
+        )
+        width, height = resolve_dimensions(aspect, src_w, src_h)
+    except (OSError, ValidationError, ValueError, IngestError) as exc:
         typer.echo(f"Input error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -249,7 +360,12 @@ def plan(
             render_video_path=render_video,
             audio_path=audio_wav,
             target_fps=RationalFPS(num=fps, den=1),
+            width=width,
+            height=height,
             framing=framing,
+            grade=grade,
+            sfx_audio_path=sfx_wav,
+            sfx_mix=parsed_sfx_mix,
         )
     except (AIBackendError, PlannerError) as exc:
         typer.echo(f"Planning error: {exc}", err=True)
@@ -320,9 +436,18 @@ def edit(
     duration: Annotated[float, typer.Option("--duration", min=0.25)] = 45.0,
     full_audio: Annotated[bool, typer.Option("--full-audio")] = False,
     fps: Annotated[int, typer.Option("--fps", min=1, max=120)] = 30,
+    aspect: Annotated[
+        AspectPreset, typer.Option("--aspect", help="Output aspect preset.")
+    ] = AspectPreset.AUTO,
     framing: Annotated[
         FramingMode, typer.Option("--framing")
     ] = FramingMode.BLUR,
+    grade: Annotated[
+        GradePreset, typer.Option("--grade", help="Color grade preset.")
+    ] = GradePreset.AUTO,
+    sfx_mix: Annotated[
+        str, typer.Option("--sfx-mix", help="SFX mix ('auto' or 0.0-1.0).")
+    ] = "auto",
     out: Annotated[Path, typer.Option("--out")] = Path("cinecut_edit.mp4"),
     otio_out: Annotated[Path, typer.Option("--otio")] = Path(
         "cinecut_edit.otio"
@@ -345,6 +470,7 @@ def edit(
     verbose: Annotated[bool, typer.Option("--verbose")] = False,
 ) -> None:
     """Run the full end-to-end cinecut editing pipeline."""
+    parsed_sfx_mix = _parse_sfx_mix(sfx_mix)
     err_console = Console(stderr=True)
     with Progress(
         SpinnerColumn(),
@@ -365,6 +491,21 @@ def edit(
             )
             render_video, media_info = prepare_video(
                 raw_video, cache_dir, use_cache=not no_cache
+            )
+            raw_info = (
+                media_info
+                if render_video == raw_video
+                else probe_media(raw_video)
+            )
+            width, height = resolve_dimensions(
+                aspect, media_info.width, media_info.height
+            )
+            sfx_wav = (
+                prepare_video_sfx(
+                    raw_video, raw_info, cache_dir, use_cache=not no_cache
+                )
+                if (parsed_sfx_mix == "auto" or parsed_sfx_mix > 0.0)
+                else None
             )
             wav_path = prepare_audio(
                 raw_audio, cache_dir, use_cache=not no_cache
@@ -394,6 +535,7 @@ def edit(
                 render_video,
                 media_info.fps,
                 cache_dir,
+                has_audio=raw_info.has_audio,
                 use_cache=not no_cache,
             )
             if verbose and not quiet and not json_out:
@@ -427,7 +569,12 @@ def edit(
                 render_video_path=render_video,
                 audio_path=wav_path,
                 target_fps=RationalFPS(num=fps, den=1),
+                width=width,
+                height=height,
                 framing=framing,
+                grade=grade,
+                sfx_audio_path=sfx_wav,
+                sfx_mix=parsed_sfx_mix,
             )
         except (AIBackendError, PlannerError) as exc:
             progress.stop()
@@ -444,7 +591,7 @@ def edit(
             progress.update(
                 task_id,
                 advance=1,
-                description="Rendering 1080x1920 MP4 & .otio...",
+                description=f"Rendering {width}x{height} MP4 & .otio...",
             )
             cmd = render_timeline(
                 timeline,
@@ -469,6 +616,10 @@ def edit(
                     "timeline_json": str(timeline_json),
                     "clips": len(timeline.clips),
                     "duration_ms": timeline.audio_duration_ms,
+                    "width": width,
+                    "height": height,
+                    "grade": timeline.grade.value,
+                    "sfx_mix": timeline.sfx_mix,
                     "dry_run": dry_run_ffmpeg,
                     "ffmpeg_cmd": cmd,
                 },

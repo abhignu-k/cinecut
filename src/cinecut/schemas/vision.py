@@ -30,6 +30,7 @@ class ShotCatalog(BaseModel):
 
     source_path: str = Field(min_length=1)
     video_fps: RationalFPS
+    has_audio: bool = False
     shots: list[ShotMetadata] = Field(min_length=1)
 
     @model_validator(mode="after")

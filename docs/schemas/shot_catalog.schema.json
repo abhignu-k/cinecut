@@ -81,6 +81,11 @@
   },
   "description": "Ordered catalog of visual shots indexed from a source/proxy video.",
   "properties": {
+    "has_audio": {
+      "default": false,
+      "title": "Has Audio",
+      "type": "boolean"
+    },
     "shots": {
       "items": {
         "$ref": "#/$defs/ShotMetadata"

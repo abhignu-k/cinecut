@@ -98,12 +98,10 @@ def prepare_video(
     return proxy_path, probe_media(proxy_path)
 
 
-def prepare_audio(
-    audio_path: Path, cache_dir: Path, *, use_cache: bool = True
+def _extract_pcm_wav(
+    media_path: Path, wav_path: Path, *, use_cache: bool, label: str
 ) -> Path:
-    """Extract/normalize audio to a cached 48 kHz stereo PCM WAV file."""
-    media_key = compute_media_hash(audio_path)
-    wav_path = cache_dir / "media" / media_key / "audio.wav"
+    """Extract normalized 48 kHz stereo PCM WAV from audio/video media."""
     if use_cache and wav_path.exists():
         return wav_path
 
@@ -113,7 +111,7 @@ def prepare_audio(
         "ffmpeg",
         "-y",
         "-i",
-        str(audio_path),
+        str(media_path),
         "-vn",
         "-af",
         "asetpts=PTS-STARTPTS",
@@ -131,6 +129,45 @@ def prepare_audio(
         raise IngestError("ffmpeg executable not found on PATH.") from exc
     if proc.returncode != 0:
         tmp_path.unlink(missing_ok=True)
-        raise IngestError(f"FFmpeg audio extraction failed: {proc.stderr}")
+        raise IngestError(f"FFmpeg {label} extraction failed: {proc.stderr}")
     os.replace(tmp_path, wav_path)
     return wav_path
+
+
+def prepare_audio(
+    audio_path: Path, cache_dir: Path, *, use_cache: bool = True
+) -> Path:
+    """Extract/normalize audio to a cached 48 kHz stereo PCM WAV file."""
+    media_key = compute_media_hash(audio_path)
+    wav_path = cache_dir / "media" / media_key / "audio.wav"
+    return _extract_pcm_wav(
+        audio_path, wav_path, use_cache=use_cache, label="audio"
+    )
+
+
+def prepare_video_sfx(
+    video_path: Path,
+    info: MediaInfo | None,
+    cache_dir: Path,
+    *,
+    use_cache: bool = True,
+) -> Path | None:
+    """Extract source video audio to cached 48 kHz stereo `sfx.wav`.
+
+    Args:
+        video_path: Source video file containing the original audio stream.
+        info: Optional pre-probed `MediaInfo` of `video_path`.
+        cache_dir: Root cache directory.
+        use_cache: Reuse cached `sfx.wav` if present.
+
+    Returns:
+        Path to `sfx.wav`, or `None` when `video_path` has no audio stream.
+    """
+    media_info = info if info is not None else probe_media(video_path)
+    if not media_info.has_audio:
+        return None
+    media_key = compute_media_hash(video_path)
+    sfx_path = cache_dir / "media" / media_key / "sfx.wav"
+    return _extract_pcm_wav(
+        video_path, sfx_path, use_cache=use_cache, label="video SFX"
+    )

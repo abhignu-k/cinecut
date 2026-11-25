@@ -56,6 +56,11 @@ def render_timeline(
         timeline.render_video_path,
         "-i",
         timeline.audio_path,
+        *(
+            ["-i", str(timeline.sfx_audio_path)]
+            if timeline.has_active_sfx()
+            else []
+        ),
         "-filter_complex_script",
         str(ffscript),
         "-map",

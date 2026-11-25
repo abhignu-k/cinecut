@@ -10,30 +10,37 @@ from pydantic import BaseModel
 from cinecut.schemas.audio import (
     AudioAnalysis,
     SectionLabel,
+    SongRecommendation,
+    SongRecommendationList,
     SongSection,
     StemEnergyCurve,
 )
 from cinecut.schemas.project import EngineType, MediaInfo, ProjectConfig
 from cinecut.schemas.timebase import RationalFPS
 from cinecut.schemas.timeline import (
+    AspectPreset,
     EditTimeline,
     EditTimelineDraft,
     EffectType,
     FramingMode,
+    GradePreset,
     NarrativeRole,
     TimelineClip,
     TimelineClipDraft,
     TransitionType,
+    resolve_dimensions,
 )
 from cinecut.schemas.vision import ShotCatalog, ShotMetadata
 
 __all__ = [
+    "AspectPreset",
     "AudioAnalysis",
     "EditTimeline",
     "EditTimelineDraft",
     "EffectType",
     "EngineType",
     "FramingMode",
+    "GradePreset",
     "MediaInfo",
     "NarrativeRole",
     "ProjectConfig",
@@ -41,12 +48,15 @@ __all__ = [
     "SectionLabel",
     "ShotCatalog",
     "ShotMetadata",
+    "SongRecommendation",
+    "SongRecommendationList",
     "SongSection",
     "StemEnergyCurve",
     "TimelineClip",
     "TimelineClipDraft",
     "TransitionType",
     "export_json_schemas",
+    "resolve_dimensions",
 ]
 
 _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
@@ -56,6 +66,7 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "shot_catalog.schema.json": ShotCatalog,
     "edit_timeline_draft.schema.json": EditTimelineDraft,
     "edit_timeline.schema.json": EditTimeline,
+    "song_recommendations.schema.json": SongRecommendationList,
 }
 
 

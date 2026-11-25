@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from cinecut.schemas import AudioAnalysis, EditTimelineDraft, ShotCatalog
+from cinecut.schemas import (
+    AudioAnalysis,
+    EditTimelineDraft,
+    ShotCatalog,
+    SongRecommendationList,
+)
 
 
 class AIBackendError(RuntimeError):
@@ -21,3 +26,11 @@ class AIBackend(Protocol):
         vibe: str,
     ) -> EditTimelineDraft:
         """Generate an `EditTimelineDraft` matching audio, shots, and vibe."""
+
+    def recommend_songs(
+        self,
+        catalog: ShotCatalog,
+        vibe: str,
+        count: int = 5,
+    ) -> SongRecommendationList:
+        """Recommend songs fitting the video pacing and director vibe."""

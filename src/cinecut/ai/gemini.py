@@ -14,10 +14,16 @@ from pydantic import ValidationError
 from cinecut.ai.base import AIBackendError
 from cinecut.ai.prompts import (
     build_editing_prompt,
+    build_song_recommendation_prompt,
     select_representative_shots,
     stitch_keyframe_strip,
 )
-from cinecut.schemas import AudioAnalysis, EditTimelineDraft, ShotCatalog
+from cinecut.schemas import (
+    AudioAnalysis,
+    EditTimelineDraft,
+    ShotCatalog,
+    SongRecommendationList,
+)
 
 _FALLBACK_MODELS: tuple[str, ...] = (
     "gemini-3.8-flash",
@@ -66,23 +72,27 @@ class GeminiBackend:
                 models.append(fb)
         return models
 
-    def generate_draft(
-        self,
-        audio: AudioAnalysis,
-        catalog: ShotCatalog,
-        vibe: str,
-    ) -> EditTimelineDraft:
-        """Call Gemini structured output with transient 503/429 backoff."""
-        prompt = build_editing_prompt(audio, catalog, vibe)
+    def _build_contents(
+        self, prompt: str, catalog: ShotCatalog, *, limit: int = 12
+    ) -> list[Any]:
+        """Attach stitched keyframe JPEG strips to the prompt contents."""
         contents: list[Any] = [prompt]
-        for shot in select_representative_shots(catalog.shots, limit=12):
+        for shot in select_representative_shots(catalog.shots, limit=limit):
             strip = stitch_keyframe_strip(shot.keyframe_paths)
             if strip is not None:
                 contents.append(f"Shot {shot.shot_id}:")
                 contents.append(
                     types.Part.from_bytes(data=strip, mime_type="image/jpeg")
                 )
+        return contents
 
+    def _call_structured(
+        self,
+        contents: list[Any],
+        schema_cls: Any,
+        schema_name: str,
+    ) -> Any:
+        """Invoke Gemini structured output with retries and model fallback."""
         last_exc: Exception | None = None
         response: Any = None
         for model_name in self._candidate_models():
@@ -93,7 +103,7 @@ class GeminiBackend:
                         contents=contents,
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
-                            response_schema=EditTimelineDraft,
+                            response_schema=schema_cls,
                         ),
                     )
                     last_exc = None
@@ -116,8 +126,40 @@ class GeminiBackend:
 
         raw_text = getattr(response, "text", None) or ""
         try:
-            return EditTimelineDraft.model_validate_json(raw_text)
+            return schema_cls.model_validate_json(raw_text)
         except ValidationError as exc:
             raise AIBackendError(
-                f"Gemini returned invalid EditTimelineDraft JSON: {exc}"
+                f"Gemini returned invalid {schema_name} JSON: {exc}"
             ) from exc
+
+    def generate_draft(
+        self,
+        audio: AudioAnalysis,
+        catalog: ShotCatalog,
+        vibe: str,
+    ) -> EditTimelineDraft:
+        """Call Gemini structured output with transient 503/429 backoff."""
+        contents = self._build_contents(
+            build_editing_prompt(audio, catalog, vibe), catalog, limit=12
+        )
+        result: EditTimelineDraft = self._call_structured(
+            contents, EditTimelineDraft, "EditTimelineDraft"
+        )
+        return result
+
+    def recommend_songs(
+        self,
+        catalog: ShotCatalog,
+        vibe: str,
+        count: int = 5,
+    ) -> SongRecommendationList:
+        """Recommend fitting songs for the footage and director vibe."""
+        contents = self._build_contents(
+            build_song_recommendation_prompt(catalog, vibe, count=count),
+            catalog,
+            limit=12,
+        )
+        result: SongRecommendationList = self._call_structured(
+            contents, SongRecommendationList, "SongRecommendationList"
+        )
+        return result

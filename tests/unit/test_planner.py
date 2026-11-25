@@ -11,6 +11,7 @@ from cinecut.schemas import (
     AudioAnalysis,
     EditTimelineDraft,
     EffectType,
+    GradePreset,
     NarrativeRole,
     RationalFPS,
     SectionLabel,
@@ -189,3 +190,93 @@ def test_solve_timeline_slows_down_short_shot(tmp_path: Path) -> None:
         target_fps=RationalFPS(num=30, den=1),
     )
     assert pytest.approx(timeline.clips[0].speed, rel=1e-2) == 0.5
+
+
+def test_solve_timeline_resolves_grade_and_selective_sfx(
+    tmp_path: Path,
+) -> None:
+    audio = _sample_audio()
+    catalog = _sample_catalog()
+    sfx = tmp_path / "sfx.wav"
+    sfx.write_bytes(b"sfx")
+    draft = EditTimelineDraft(
+        recommended_grade=GradePreset.WARM,
+        recommended_sfx_mix=0.25,
+        clips=[
+            TimelineClipDraft(
+                shot_id="shot_0001",
+                src_start_ms=0,
+                src_end_ms=2000,
+                dst_start_ms=0,
+                dst_end_ms=2000,
+                use_sfx=True,
+            ),
+            TimelineClipDraft(
+                shot_id="shot_0002",
+                src_start_ms=5000,
+                src_end_ms=7000,
+                dst_start_ms=2000,
+                dst_end_ms=4000,
+                use_sfx=False,
+            ),
+        ],
+    )
+    tl_auto = solve_timeline(
+        draft,
+        audio,
+        catalog,
+        source_video_path=tmp_path / "raw.mp4",
+        render_video_path=tmp_path / "proxy.mp4",
+        audio_path=tmp_path / "audio.wav",
+        target_fps=RationalFPS(num=30, den=1),
+        width=1080,
+        height=1350,
+        grade=GradePreset.AUTO,
+        sfx_audio_path=sfx,
+        sfx_mix="auto",
+    )
+    assert tl_auto.width == 1080
+    assert tl_auto.height == 1350
+    assert tl_auto.grade == GradePreset.WARM
+    assert tl_auto.has_active_sfx() is True
+    assert pytest.approx(tl_auto.clips[0].sfx_gain) == 0.25
+    assert tl_auto.clips[1].sfx_gain == 0.0
+
+    tl_off = solve_timeline(
+        draft,
+        audio,
+        catalog,
+        source_video_path=tmp_path / "raw.mp4",
+        render_video_path=tmp_path / "proxy.mp4",
+        audio_path=tmp_path / "audio.wav",
+        target_fps=RationalFPS(num=30, den=1),
+        sfx_audio_path=sfx,
+        sfx_mix=0.0,
+    )
+    assert tl_off.has_active_sfx() is False
+    assert tl_off.sfx_audio_path is None
+
+    tl_forced = solve_timeline(
+        draft,
+        audio,
+        catalog,
+        source_video_path=tmp_path / "raw.mp4",
+        render_video_path=tmp_path / "proxy.mp4",
+        audio_path=tmp_path / "audio.wav",
+        target_fps=RationalFPS(num=30, den=1),
+        sfx_audio_path=sfx,
+        sfx_mix=0.4,
+    )
+    assert all(pytest.approx(c.sfx_gain) == 0.4 for c in tl_forced.clips)
+
+    with pytest.raises(PlannerError, match="sfx_mix"):
+        solve_timeline(
+            draft,
+            audio,
+            catalog,
+            source_video_path=tmp_path / "raw.mp4",
+            render_video_path=tmp_path / "proxy.mp4",
+            audio_path=tmp_path / "audio.wav",
+            target_fps=RationalFPS(num=30, den=1),
+            sfx_mix=1.5,
+        )

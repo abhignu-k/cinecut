@@ -10,6 +10,7 @@ from cinecut.ingest.prepare import (
     needs_proxy,
     prepare_audio,
     prepare_video,
+    prepare_video_sfx,
 )
 from cinecut.ingest.probe import IngestError, probe_media
 from cinecut.ingest.youtube import (
@@ -154,11 +155,20 @@ def test_needs_proxy_and_prepare_video_and_audio(
     assert wav_path.suffix == ".wav"
     assert wav_path.exists()
 
+    assert prepare_video_sfx(raw, clean_info, cache) is None
+    sfx_info = clean_info.model_copy(update={"has_audio": True})
+    sfx_path = prepare_video_sfx(raw, sfx_info, cache)
+    assert sfx_path is not None
+    assert sfx_path.name == "sfx.wav"
+    assert sfx_path.exists()
+
 
 def test_youtube_url_detection_and_missing_extra(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     assert is_url("https://youtube.com/watch?v=abc") is True
+    assert is_url("ytsearch1:Kanye West All Of The Lights") is True
+    assert is_url("ytsearch1:") is False
     assert is_url("/tmp/local.mp4") is False
 
     local = tmp_path / "clip.mp4"

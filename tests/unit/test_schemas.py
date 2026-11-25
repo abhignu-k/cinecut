@@ -5,11 +5,13 @@ import pytest
 from pydantic import ValidationError
 
 from cinecut.schemas import (
+    AspectPreset,
     AudioAnalysis,
     EditTimeline,
     EditTimelineDraft,
     EffectType,
     EngineType,
+    GradePreset,
     MediaInfo,
     NarrativeRole,
     ProjectConfig,
@@ -17,12 +19,15 @@ from cinecut.schemas import (
     SectionLabel,
     ShotCatalog,
     ShotMetadata,
+    SongRecommendation,
+    SongRecommendationList,
     SongSection,
     StemEnergyCurve,
     TimelineClip,
     TimelineClipDraft,
     TransitionType,
     export_json_schemas,
+    resolve_dimensions,
 )
 
 
@@ -235,8 +240,69 @@ def test_edit_timeline_and_draft_validation() -> None:
 
 def test_export_json_schemas(tmp_path: Path) -> None:
     exported = export_json_schemas(tmp_path)
-    assert len(exported) == 6
+    assert len(exported) == 7
     for path in exported:
         assert path.exists()
         data = json.loads(path.read_text(encoding="utf-8"))
         assert "$defs" in data or "properties" in data
+
+
+def test_resolve_dimensions_and_v02_schemas() -> None:
+    assert resolve_dimensions(AspectPreset.AUTO, 1920, 1080) == (1080, 1350)
+    assert resolve_dimensions(AspectPreset.AUTO, 1080, 1920) == (1080, 1920)
+    assert resolve_dimensions(AspectPreset.PORTRAIT_4_5, 1920, 1080) == (
+        1080,
+        1350,
+    )
+    assert resolve_dimensions(AspectPreset.CLASSIC_4_3, 1920, 1080) == (
+        1440,
+        1080,
+    )
+    assert resolve_dimensions(AspectPreset.WIDE_16_9, 1080, 1920) == (
+        1920,
+        1080,
+    )
+    assert resolve_dimensions(AspectPreset.VERTICAL_9_16, 1920, 1080) == (
+        1080,
+        1920,
+    )
+    with pytest.raises(ValueError, match="positive"):
+        resolve_dimensions(AspectPreset.AUTO, 0, 1080)
+
+    rec = SongRecommendation(
+        title="All Of The Lights",
+        artist="Kanye West",
+        target_bpm=142,
+        energy_arc="Brass fanfare intro into driving chorus",
+        fit_reason="Matches medium-motion setup and explosive drop cuts.",
+        yt_search_query="ytsearch1:Kanye West All Of The Lights audio",
+    )
+    rec_list = SongRecommendationList(recommendations=[rec])
+    assert rec_list.recommendations[0].target_bpm == 142
+
+    from google.genai import Client
+    from google.genai import _transformers as t
+
+    client = Client(api_key="dummy-key")
+    assert t.t_schema(client._api_client, SongRecommendationList) is not None
+    assert t.t_schema(client._api_client, EditTimelineDraft) is not None
+
+    with pytest.raises(ValidationError):
+        EditTimeline(
+            source_video_path="raw.mp4",
+            render_video_path="proxy.mp4",
+            audio_path="audio.wav",
+            target_fps=RationalFPS(num=30, den=1),
+            grade=GradePreset.AUTO,
+            audio_start_ms=0,
+            audio_duration_ms=1000,
+            clips=[
+                TimelineClip(
+                    shot_id="s1",
+                    src_start_ms=0,
+                    src_end_ms=1000,
+                    dst_start_ms=0,
+                    dst_end_ms=1000,
+                )
+            ],
+        )

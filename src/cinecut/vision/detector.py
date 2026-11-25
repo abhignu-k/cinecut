@@ -14,7 +14,7 @@ def normalize_shot_spans(
     total_ms: int,
     *,
     min_shot_ms: int = 400,
-    max_shot_ms: int = 8000,
+    max_shot_ms: int = 12000,
 ) -> list[tuple[int, int]]:
     """Merge ultra-short flashes and split overly long takes.
 
@@ -74,7 +74,7 @@ def detect_shots(
     video_fps: RationalFPS,
     *,
     min_shot_ms: int = 400,
-    max_shot_ms: int = 8000,
+    max_shot_ms: int = 12000,
     threshold: float = 27.0,
 ) -> list[tuple[int, int]]:
     """Detect and normalize shot intervals from a CFR video file."""

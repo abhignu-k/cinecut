@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -11,10 +12,16 @@ from pydantic import ValidationError
 from cinecut.ai.base import AIBackendError
 from cinecut.ai.prompts import (
     build_editing_prompt,
+    build_song_recommendation_prompt,
     select_representative_shots,
     stitch_keyframe_strip,
 )
-from cinecut.schemas import AudioAnalysis, EditTimelineDraft, ShotCatalog
+from cinecut.schemas import (
+    AudioAnalysis,
+    EditTimelineDraft,
+    ShotCatalog,
+    SongRecommendationList,
+)
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
@@ -51,14 +58,14 @@ class GemmaBackend:
             timeout=120.0, trust_env=False, follow_redirects=False
         )
 
-    def generate_draft(
+    def _chat_structured(
         self,
-        audio: AudioAnalysis,
+        prompt: str,
         catalog: ShotCatalog,
-        vibe: str,
-    ) -> EditTimelineDraft:
-        """Query local Ollama `/api/chat` with bounded JSON repair retries."""
-        prompt = build_editing_prompt(audio, catalog, vibe)
+        schema_cls: Any,
+        schema_name: str,
+    ) -> Any:
+        """Query Ollama `/api/chat` with keyframes and bounded JSON repair."""
         images_b64: list[str] = []
         attached_ids: list[str] = []
         for shot in select_representative_shots(catalog.shots, limit=8):
@@ -80,7 +87,7 @@ class GemmaBackend:
                 **({"images": images_b64} if images_b64 else {}),
             }
         ]
-        schema = EditTimelineDraft.model_json_schema()
+        schema = schema_cls.model_json_schema()
 
         last_err: Exception | None = None
         for attempt in range(self.max_retries + 1):
@@ -108,7 +115,7 @@ class GemmaBackend:
                 ) from exc
 
             try:
-                return EditTimelineDraft.model_validate_json(content)
+                return schema_cls.model_validate_json(content)
             except ValidationError as exc:
                 last_err = exc
                 if attempt < self.max_retries:
@@ -121,7 +128,7 @@ class GemmaBackend:
                             "content": (
                                 "Your JSON failed schema validation: "
                                 f"{str(exc)[:300]}. Return ONLY valid JSON "
-                                "matching EditTimelineDraft."
+                                f"matching {schema_name}."
                             ),
                         }
                     )
@@ -129,3 +136,33 @@ class GemmaBackend:
         raise AIBackendError(
             f"Gemma failed to produce valid JSON after retries: {last_err}"
         )
+
+    def generate_draft(
+        self,
+        audio: AudioAnalysis,
+        catalog: ShotCatalog,
+        vibe: str,
+    ) -> EditTimelineDraft:
+        """Query local Ollama `/api/chat` with bounded JSON repair retries."""
+        result: EditTimelineDraft = self._chat_structured(
+            build_editing_prompt(audio, catalog, vibe),
+            catalog,
+            EditTimelineDraft,
+            "EditTimelineDraft",
+        )
+        return result
+
+    def recommend_songs(
+        self,
+        catalog: ShotCatalog,
+        vibe: str,
+        count: int = 5,
+    ) -> SongRecommendationList:
+        """Recommend fitting songs via local Ollama `/api/chat`."""
+        result: SongRecommendationList = self._chat_structured(
+            build_song_recommendation_prompt(catalog, vibe, count=count),
+            catalog,
+            SongRecommendationList,
+            "SongRecommendationList",
+        )
+        return result

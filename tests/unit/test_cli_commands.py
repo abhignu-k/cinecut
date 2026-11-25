@@ -194,3 +194,60 @@ def test_composable_analyze_plan_render_dry_run(tmp_path: Path) -> None:
     )
     assert res_v.exit_code == 0, res_v.output
     assert (cache_dir / "timeline.json").exists()
+
+    res_rec = runner.invoke(
+        app,
+        [
+            "recommend",
+            "--video",
+            str(video),
+            "--vibe",
+            "dramatic comeback",
+            "--engine",
+            "mock",
+            "--count",
+            "3",
+            "--cache-dir",
+            str(cache_dir),
+            "--json",
+        ],
+    )
+    assert res_rec.exit_code == 0, res_rec.output
+    rec_data = json.loads(res_rec.output)
+    assert len(rec_data["recommendations"]) == 3
+    assert rec_data["recommendations"][0]["yt_search_query"].startswith(
+        "ytsearch1:"
+    )
+
+    res_rec_tbl = runner.invoke(
+        app,
+        [
+            "recommend",
+            "--video",
+            str(video),
+            "--vibe",
+            "dramatic comeback",
+            "--engine",
+            "mock",
+            "--cache-dir",
+            str(cache_dir),
+        ],
+    )
+    assert res_rec_tbl.exit_code == 0, res_rec_tbl.output
+    assert "cinecut song recommendations" in res_rec_tbl.output
+
+    bad_sfx = runner.invoke(
+        app,
+        [
+            "edit",
+            "--video",
+            str(video),
+            "--audio",
+            str(audio),
+            "--vibe",
+            "test",
+            "--sfx-mix",
+            "loud",
+        ],
+    )
+    assert bad_sfx.exit_code != 0

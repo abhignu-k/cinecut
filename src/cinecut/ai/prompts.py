@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import statistics
 from pathlib import Path
 
 import cv2
@@ -74,6 +75,7 @@ def build_editing_prompt(
         "vibe": vibe,
         "window_duration_ms": win_dur,
         "bpm": round(audio.bpm, 1),
+        "has_video_audio": catalog.has_audio,
         "beats_ms": win_beats,
         "sections": [sec.model_dump(mode="json") for sec in win_sections],
         "shots": [
@@ -89,15 +91,70 @@ def build_editing_prompt(
         ],
     }
     return (
-        "You are a cinematic vertical video editor. Create an "
-        "EditTimelineDraft where dst_start_ms/dst_end_ms are window-relative "
-        "[0, window_duration_ms] contiguously, and src_start_ms/src_end_ms "
-        "are source-video-relative within each chosen shot's [start_ms, "
-        "end_ms]. Prefer clean action, tracking, onboard, and atmospheric "
-        "shots; AVOID shots dominated by broadcast HUDs, driver nameplates, "
-        "leaderboards, or static text overlays. Use longer slow-mo holds "
-        "(speed 0.65-0.85, 1.5s-3.5s) for setup/buildup, and crisp "
-        "beat-synced cuts (0.5s-1.2s) with zoom_punch/flash on drop/climax "
-        "sections. Cut on beats_ms. Input context:\n"
+        "You are a multi-genre cinematic editor (sports, film, anime, motors). "
+        "Create an EditTimelineDraft where dst_start_ms/dst_end_ms are "
+        "window-relative [0, window_duration_ms] contiguously, and "
+        "src_start_ms/src_end_ms stay within each shot's [start_ms, end_ms]. "
+        "Prefer clean action, expressive closeup, tracking, and atmospheric "
+        "shots; AVOID shots cluttered with broadcast HUDs, scoreboards, "
+        "nameplates, hardsubs, or static text overlays. Pace dynamically: use "
+        "longer atmospheric holds (3s-8s, speed 0.65-1.0) during setup/buildup "
+        "when long shots exist, contrasting with tight beat-locked cuts "
+        "(0.45s-1.2s) with zoom_punch/flash on drop/climax. Cut on beats_ms. "
+        "Set recommended_grade ('moody', 'warm', or 'crisp') to fit both the "
+        "vibe and footage colors. If has_video_audio is false, set "
+        "use_sfx=false on every clip and recommended_sfx_mix=0.0. If "
+        "has_video_audio is true, enable use_sfx=true ONLY on clips where "
+        "original sound elevates impact (engine roar, crowd cheer, whistle, "
+        "dialogue pause) and keep use_sfx=false on rapid drop cuts or "
+        "pure-music/AMV edits; set recommended_sfx_mix in 0.15-0.35 when "
+        "use_sfx clips exist, else 0.0. Input context:\n"
         + json.dumps(payload, indent=2)
+    )
+
+
+def build_song_recommendation_prompt(
+    catalog: ShotCatalog, vibe: str, count: int = 5
+) -> str:
+    """Build a structured prompt asking for music tracks fitting the footage.
+
+    Args:
+        catalog: Indexed video shot catalog.
+        vibe: User-requested director intent or genre mood.
+        count: Number of track recommendations requested.
+
+    Returns:
+        Prompt string embedding footage tempo stats and vibe context.
+    """
+    durations = [s.end_ms - s.start_ms for s in catalog.shots]
+    motions = [s.motion_score for s in catalog.shots]
+    total_ms = max(s.end_ms for s in catalog.shots)
+    sample_shots = select_representative_shots(catalog.shots, limit=24)
+    summary = {
+        "vibe": vibe,
+        "requested_count": count,
+        "video_duration_ms": total_ms,
+        "shot_count": len(catalog.shots),
+        "median_shot_ms": round(statistics.median(durations)),
+        "motion_min": round(min(motions), 3),
+        "motion_avg": round(statistics.mean(motions), 3),
+        "motion_max": round(max(motions), 3),
+        "representative_shots": [
+            {
+                "shot_id": s.shot_id,
+                "duration_ms": s.end_ms - s.start_ms,
+                "motion_score": round(s.motion_score, 3),
+            }
+            for s in sample_shots
+        ],
+    }
+    return (
+        f"You are a music supervisor for cinematic edits. Suggest {count} "
+        "distinct songs tailored to the attached video keyframes and the "
+        "director vibe. Match BPM and musical energy arc to the footage motion "
+        "profile and shot durations. For each recommendation provide title, "
+        "artist, target_bpm (40-240), energy_arc, fit_reason referencing the "
+        "footage/vibe, and yt_search_query formatted as "
+        "'ytsearch1:<Artist> - <Title> audio'. Video profile:\n"
+        + json.dumps(summary, indent=2)
     )

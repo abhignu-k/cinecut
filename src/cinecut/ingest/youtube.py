@@ -4,18 +4,27 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import re
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
+
+from cinecut.ingest.probe import IngestError
 
 
 class MissingExtraError(RuntimeError):
     """Raised when an optional extra dependency is not installed."""
 
 
+_YTSEARCH_RE = re.compile(r"^ytsearch\d*:.+", re.IGNORECASE)
+
+
 def is_url(source: str) -> bool:
-    """Return True if source looks like an HTTP/HTTPS URL."""
-    parsed = urlparse(source)
+    """Return True if source is an HTTP(S) URL or ytsearch query."""
+    stripped = source.strip()
+    if _YTSEARCH_RE.match(stripped):
+        return bool(stripped.partition(":")[2].strip())
+    parsed = urlparse(stripped)
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
@@ -25,10 +34,10 @@ def resolve_media_source(
     *,
     kind: Literal["video", "audio"],
 ) -> Path:
-    """Resolve a local path or download a URL via optional `yt-dlp`.
+    """Resolve a local path or download a URL/search via optional `yt-dlp`.
 
     Args:
-        source: Local filesystem path or HTTP(S) URL.
+        source: Local filesystem path, HTTP(S) URL, or `ytsearch1:` query.
         cache_dir: Root cache directory for downloaded media.
         kind: Whether downloading video or audio.
 
@@ -37,7 +46,8 @@ def resolve_media_source(
 
     Raises:
         FileNotFoundError: If a local path does not exist.
-        MissingExtraError: If a URL is given without `cinecut[yt]`.
+        IngestError: If a search/playlist yields no downloadable entries.
+        MissingExtraError: If a URL/query is given without `cinecut[yt]`.
     """
     if not is_url(source):
         path = Path(source)
@@ -68,6 +78,11 @@ def resolve_media_source(
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info: dict[str, Any] = ydl.extract_info(source, download=True)
+        if "entries" in info:
+            entries = info.get("entries") or []
+            if not entries:
+                raise IngestError(f"No downloadable media found for: {source}")
+            info = entries[0]
         req_downloads = info.get("requested_downloads") or []
         if req_downloads and req_downloads[0].get("filepath"):
             return Path(str(req_downloads[0]["filepath"]))

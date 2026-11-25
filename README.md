@@ -1,20 +1,22 @@
 # cinecut
 
-**Context-aware, rhythm- and story-synced AI cinematic vertical (`9:16`) edit engine.**
+**Context-aware, rhythm- and story-synced AI multi-genre cinematic edit engine.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Python 3.11–3.13](https://img.shields.io/badge/python-3.11%E2%80%933.13-blue.svg)](./pyproject.toml)
 
-`cinecut` is an open-source Python CLI that turns raw footage and a music track into a vertical (`1080x1920`) cinematic edit driven by a `--vibe` director-intent prompt. Unlike mechanical beat-onset cutters or speech-to-text podcast clippers, `cinecut` pairs musical structure (buildups, drops, downbeats, and optional stem energy) with shot motion/framing analysis—validating every cut deterministically before rendering via FFmpeg and exporting an editable OpenTimelineIO (`.otio`) rough cut.
+`cinecut` is an open-source Python CLI that turns raw sports, film, anime, or motorsport footage and a music track into a cinematic edit (`4:5`, `4:3`, `16:9`, or `9:16`) driven by a `--vibe` director-intent prompt. Unlike mechanical beat-onset cutters or speech-to-text podcast clippers, `cinecut` pairs musical structure (buildups, drops, downbeats, and optional stem energy) with shot motion/framing analysis, color-grading presets, selective original-audio SFX mixing, and AI song recommendations—validating every cut deterministically before rendering via FFmpeg and exporting an editable OpenTimelineIO (`.otio`) rough cut.
 
 ---
 
 ## Why `cinecut`?
 
-- **Story & Pacing Over Random Cuts:** Map low-motion setup shots to intros/buildups and high-motion climax shots with beat-synced `zoom_punch` / `flash` effects to the drop.
+- **Story & Dynamic Pacing Across Genres:** Holds longer atmospheric shots (`3–10s`) during setups/buildups and snaps into high-motion beat-synced `zoom_punch` / `flash` cuts at the drop across sports, film, anime, and motorsports.
+- **Native Framing, Color & Smart SFX (`auto` defaults):** Automatically chooses full-frame `4:5` (`1080x1350`) for landscape footage (`9:16` for portrait) or honors `--aspect 4:3|16:9|9:16|4:5`, applies AI-chosen `--grade auto|moody|warm|crisp|none`, and lets `--sfx-mix auto` blend original sound (`engines`, crowd roar, dialogue pauses) only when it elevates the cut.
+- **AI Song Recommender (`cinecut recommend`):** Analyzes any `--video` + `--vibe` to suggest 5 tracks with target BPM and ready-to-run `ytsearch1:` audio queries (`--audio "ytsearch1:..."`).
 - **Dual AI Engine (`--engine gemini` / `--engine gemma`):** Use Google Gemini (`google-genai`) in the cloud or run 100% offline/copyright-safe with multimodal Gemma via local Ollama (`127.0.0.1:11434`). Includes `--engine mock` for deterministic dry runs and CI.
 - **Zero A/V Sync Drift:** Automatically normalizes VFR, display rotation, non-square SAR, and non-zero start PTS to a cached CFR proxy, then validates speed-duration conservation (`<= 1ms`) and frame-grid alignment before rendering.
-- **Render + Editable Timeline:** Produces both a ready-to-post `1080x1920` MP4 (`-filter_complex_script`) and an editable `.otio` timeline referencing your original source media for DaVinci Resolve or Premiere Pro.
+- **Render + Editable Timeline:** Produces both a ready-to-post MP4 (`-filter_complex_script`) and an editable `.otio` timeline (with optional aligned `SFX` track) referencing your original source media for DaVinci Resolve or Premiere Pro.
 
 ---
 
@@ -80,16 +82,24 @@ cinecut doctor
 
 ## Quickstart
 
-### 1. Cloud Mode (`--engine gemini`)
+### 1. Cloud Mode & Song Recommendations (`--engine gemini`)
 
 ```bash
 export GEMINI_API_KEY="your-api-key"
+
+# 1. Ask cinecut to suggest 5 tracks fitting your footage + vibe
+cinecut recommend --video highlights.mp4 --vibe "dramatic comeback"
+
+# 2. Generate the edit (--aspect, --grade, and --sfx-mix all default to auto)
 cinecut edit \
-  --video race_highlights.mp4 \
-  --audio track.mp3 \
-  --vibe "underdog pit-lane comeback: tense buildup into rapid overtakes at the drop" \
+  --video highlights.mp4 \
+  --audio "ytsearch1:Kanye West - All Of The Lights audio" \
+  --vibe "slow stadium/pit buildup into explosive climax cuts" \
+  --aspect auto \
+  --framing crop \
+  --grade auto \
+  --sfx-mix auto \
   --engine gemini \
-  --gemini-model gemini-3.8-flash \
   --out edit.mp4 \
   --otio edit.otio
 ```
@@ -148,10 +158,11 @@ cinecut render --timeline-json ./work/timeline.json --out edit.mp4 --otio edit.o
 
 | Command | Purpose |
 | :--- | :--- |
-| `cinecut edit` | Run full end-to-end pipeline (ingest, audio/vision analysis, AI plan, FFmpeg render, `.otio` export). |
-| `cinecut analyze` | Probe/normalize media, extract beat grid & sections, index shots, and save `audio.json` + `shots.json`. |
+| `cinecut edit` | Run full end-to-end pipeline (`--aspect auto\|4:5\|4:3\|16:9\|9:16`, `--grade auto\|moody\|warm\|crisp\|none`, `--sfx-mix auto\|0.0-1.0`). |
+| `cinecut recommend` | Analyze video tempo/motion + `--vibe` and recommend 5 fitting tracks with BPM & `ytsearch1:` queries. |
+| `cinecut analyze` | Probe/normalize media, extract beat grid & sections, extract optional `sfx.wav`, index shots, and save JSONs. |
 | `cinecut plan` | Run `--engine gemini\|gemma\|mock` + deterministic sync solver to produce `timeline.json`. |
-| `cinecut render` | Render `1080x1920` MP4 via `-filter_complex_script` (or `--dry-run-ffmpeg`) and export `.otio`. |
+| `cinecut render` | Render target-aspect MP4 via `-filter_complex_script` (or `--dry-run-ffmpeg`) and export `.otio`. |
 | `cinecut doctor` | Check `ffmpeg`, `ffprobe`, optional extras, `GEMINI_API_KEY`, and local Gemma server health. |
 
 ---

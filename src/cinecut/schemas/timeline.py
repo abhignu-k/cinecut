@@ -17,11 +17,62 @@ class TransitionType(StrEnum):
 
 
 class FramingMode(StrEnum):
-    """Vertical 9:16 framing strategy for source footage."""
+    """Target aspect framing strategy for source footage."""
 
     BLUR = "blur"
     CINEMA = "cinema"
     CROP = "crop"
+
+
+class AspectPreset(StrEnum):
+    """Supported target aspect ratio presets for final rendering."""
+
+    AUTO = "auto"
+    PORTRAIT_4_5 = "4:5"
+    CLASSIC_4_3 = "4:3"
+    WIDE_16_9 = "16:9"
+    VERTICAL_9_16 = "9:16"
+
+
+class GradePreset(StrEnum):
+    """Supported cinematic color-grading presets."""
+
+    AUTO = "auto"
+    MOODY = "moody"
+    WARM = "warm"
+    CRISP = "crisp"
+    NONE = "none"
+
+
+_ASPECT_DIMENSIONS: dict[AspectPreset, tuple[int, int]] = {
+    AspectPreset.PORTRAIT_4_5: (1080, 1350),
+    AspectPreset.CLASSIC_4_3: (1440, 1080),
+    AspectPreset.WIDE_16_9: (1920, 1080),
+    AspectPreset.VERTICAL_9_16: (1080, 1920),
+}
+
+
+def resolve_dimensions(
+    aspect: AspectPreset, src_w: int, src_h: int
+) -> tuple[int, int]:
+    """Resolve concrete render width and height for an aspect preset.
+
+    Args:
+        aspect: Requested aspect ratio preset or `AspectPreset.AUTO`.
+        src_w: Source video display width in pixels.
+        src_h: Source video display height in pixels.
+
+    Returns:
+        Concrete `(width, height)` output dimensions in pixels.
+
+    Raises:
+        ValueError: If source dimensions are not positive integers.
+    """
+    if src_w <= 0 or src_h <= 0:
+        raise ValueError("Source width and height must be positive.")
+    if aspect == AspectPreset.AUTO:
+        return (1080, 1350) if src_w >= src_h else (1080, 1920)
+    return _ASPECT_DIMENSIONS[aspect]
 
 
 class EffectType(StrEnum):
@@ -53,12 +104,15 @@ class TimelineClipDraft(BaseModel):
     effect: EffectType = EffectType.NONE
     narrative_role: NarrativeRole = NarrativeRole.SETUP
     rationale: str = ""
+    use_sfx: bool = False
 
 
 class EditTimelineDraft(BaseModel):
     """Relaxed timeline proposal emitted by an AI backend."""
 
     clips: list[TimelineClipDraft] = Field(min_length=1)
+    recommended_grade: GradePreset = GradePreset.MOODY
+    recommended_sfx_mix: float = Field(default=0.0, ge=0.0, le=0.5)
 
 
 class TimelineClip(BaseModel):
@@ -75,6 +129,7 @@ class TimelineClip(BaseModel):
     effect: EffectType = EffectType.NONE
     narrative_role: NarrativeRole = NarrativeRole.SETUP
     rationale: str = ""
+    sfx_gain: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _validate_clip_sync(self) -> TimelineClip:
@@ -105,12 +160,19 @@ class EditTimeline(BaseModel):
     width: int = Field(default=1080, gt=0)
     height: int = Field(default=1920, gt=0)
     framing: FramingMode = FramingMode.BLUR
+    grade: GradePreset = GradePreset.MOODY
+    sfx_audio_path: str | None = None
+    sfx_mix: float = Field(default=0.0, ge=0.0, le=1.0)
     audio_start_ms: int = Field(ge=0)
     audio_duration_ms: int = Field(gt=0)
     clips: list[TimelineClip] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _validate_contiguity(self) -> EditTimeline:
+        if self.grade == GradePreset.AUTO:
+            raise ValueError(
+                "EditTimeline.grade must be resolved to a concrete preset."
+            )
         if self.clips[0].dst_start_ms != 0:
             raise ValueError(
                 "First timeline clip must start at dst_start_ms=0."
@@ -125,3 +187,9 @@ class EditTimeline(BaseModel):
                 "Last clip dst_end_ms must equal audio_duration_ms."
             )
         return self
+
+    def has_active_sfx(self) -> bool:
+        """Return True if SFX audio is present and enabled on any clip."""
+        return self.sfx_audio_path is not None and any(
+            clip.sfx_gain > 0.0 for clip in self.clips
+        )

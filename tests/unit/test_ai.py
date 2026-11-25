@@ -18,10 +18,13 @@ from cinecut.ai.prompts import (
 from cinecut.schemas import (
     AudioAnalysis,
     EditTimelineDraft,
+    GradePreset,
     RationalFPS,
     SectionLabel,
     ShotCatalog,
     ShotMetadata,
+    SongRecommendation,
+    SongRecommendationList,
     SongSection,
     TimelineClipDraft,
 )
@@ -74,6 +77,26 @@ def test_mock_backend_generates_valid_draft() -> None:
     assert isinstance(draft, EditTimelineDraft)
     assert draft.clips[0].dst_start_ms == 0
     assert draft.clips[-1].dst_end_ms == 4000
+    assert draft.recommended_grade == GradePreset.MOODY
+    assert all(not c.use_sfx for c in draft.clips)
+
+    sfx_cat = catalog.model_copy(update={"has_audio": True})
+    sfx_draft = backend.generate_draft(audio, sfx_cat, "golden sunset triumph")
+    assert sfx_draft.recommended_grade == GradePreset.WARM
+    assert sfx_draft.clips[0].use_sfx is True
+    assert sfx_draft.recommended_sfx_mix > 0.0
+
+    amv_draft = backend.generate_draft(audio, sfx_cat, "bright anime amv")
+    assert amv_draft.recommended_grade == GradePreset.CRISP
+    assert all(not c.use_sfx for c in amv_draft.clips)
+    assert amv_draft.recommended_sfx_mix == 0.0
+
+    recs = backend.recommend_songs(catalog, "F1 comeback", count=5)
+    assert len(recs.recommendations) == 5
+    assert all(40 <= r.target_bpm <= 240 for r in recs.recommendations)
+    assert all(
+        r.yt_search_query.startswith("ytsearch1:") for r in recs.recommendations
+    )
 
 
 def test_gemini_response_schema_is_sdk_compatible() -> None:
@@ -216,3 +239,39 @@ def test_select_representative_shots_covers_late_climax() -> None:
     assert "shot_00" in ids
     assert "shot_18" in ids
     assert "shot_19" in ids
+
+
+def test_gemini_and_gemma_recommend_songs() -> None:
+    _, catalog = _sample_inputs()
+    rec = SongRecommendation(
+        title="Outro",
+        artist="M83",
+        target_bpm=104,
+        energy_arc="Ambient swell into soaring stadium crescendo",
+        fit_reason="Pairs naturally with triumphant comebacks.",
+        yt_search_query="ytsearch1:M83 - Outro audio",
+    )
+    expected = SongRecommendationList(recommendations=[rec])
+
+    class FakeModels:
+        def generate_content(self, **kwargs: object) -> object:
+            return SimpleNamespace(text=expected.model_dump_json())
+
+    gem = GeminiBackend(client=SimpleNamespace(models=FakeModels()))
+    out_gem = gem.recommend_songs(catalog, "dramatic victory", count=1)
+    assert out_gem.recommendations[0].artist == "M83"
+
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        content = "{bad" if attempts == 1 else expected.model_dump_json()
+        return httpx.Response(200, json={"message": {"content": content}})
+
+    ol = GemmaBackend(
+        client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    out_ol = ol.recommend_songs(catalog, "dramatic victory", count=1)
+    assert attempts == 2
+    assert out_ol.recommendations[0].title == "Outro"

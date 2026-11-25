@@ -103,3 +103,20 @@ class AudioAnalysis(BaseModel):
         ):
             raise ValueError("stem_curves length must match beats_ms length.")
         return self
+
+
+class SongRecommendation(BaseModel):
+    """AI-suggested track fitting the footage pacing and director vibe."""
+
+    title: str = Field(min_length=1)
+    artist: str = Field(min_length=1)
+    target_bpm: int = Field(ge=40, le=240)
+    energy_arc: str = Field(min_length=1)
+    fit_reason: str = Field(min_length=1)
+    yt_search_query: str = Field(min_length=1)
+
+
+class SongRecommendationList(BaseModel):
+    """Ordered set of AI-recommended tracks for a video + vibe."""
+
+    recommendations: list[SongRecommendation] = Field(min_length=1)

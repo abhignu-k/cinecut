@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import Literal
 
 from cinecut.schemas import (
     AudioAnalysis,
     EditTimeline,
     EditTimelineDraft,
     FramingMode,
+    GradePreset,
     RationalFPS,
     ShotCatalog,
     ShotMetadata,
@@ -119,7 +121,12 @@ def solve_timeline(
     render_video_path: Path,
     audio_path: Path,
     target_fps: RationalFPS,
+    width: int = 1080,
+    height: int = 1920,
     framing: FramingMode = FramingMode.BLUR,
+    grade: GradePreset = GradePreset.AUTO,
+    sfx_audio_path: Path | None = None,
+    sfx_mix: float | Literal["auto"] = "auto",
     beat_snap_tolerance_ms: int = 60,
     min_clip_ms: int = 250,
 ) -> EditTimeline:
@@ -133,7 +140,12 @@ def solve_timeline(
         render_video_path: Normalized CFR proxy or video path (for FFmpeg).
         audio_path: Extracted 48kHz WAV audio path.
         target_fps: Output rational frame rate.
-        framing: Vertical framing strategy (`blur`, `cinema`, or `crop`).
+        width: Target video output width in pixels.
+        height: Target video output height in pixels.
+        framing: Aspect framing strategy (`blur`, `cinema`, or `crop`).
+        grade: Requested color grade preset (`auto` defers to AI draft).
+        sfx_audio_path: Optional source video `sfx.wav` audio path.
+        sfx_mix: `"auto"` (AI per-clip gating) or fixed mix gain `[0.0, 1.0]`.
         beat_snap_tolerance_ms: Max distance to snap cut points to beats.
         min_clip_ms: Minimum allowed destination clip duration (>= 250).
 
@@ -145,6 +157,29 @@ def solve_timeline(
     """
     if min_clip_ms < 250:
         raise PlannerError("min_clip_ms must be at least 250ms.")
+    if not isinstance(sfx_mix, str) and not (0.0 <= sfx_mix <= 1.0):
+        raise PlannerError("sfx_mix must be between 0.0 and 1.0 or 'auto'.")
+
+    resolved_grade = grade
+    if resolved_grade == GradePreset.AUTO:
+        resolved_grade = (
+            draft.recommended_grade
+            if draft.recommended_grade != GradePreset.AUTO
+            else GradePreset.MOODY
+        )
+
+    auto_gain = (
+        min(0.35, max(0.15, draft.recommended_sfx_mix))
+        if draft.recommended_sfx_mix > 0.0
+        else 0.25
+    )
+
+    def _clip_sfx_gain(clip_draft: TimelineClipDraft) -> float:
+        if sfx_audio_path is None:
+            return 0.0
+        if not isinstance(sfx_mix, str):
+            return float(sfx_mix)
+        return auto_gain if clip_draft.use_sfx else 0.0
 
     shot_by_id = {s.shot_id: s for s in catalog.shots}
     win_beats, _ = shift_audio_to_window(audio)
@@ -203,18 +238,31 @@ def solve_timeline(
                 effect=clip_draft.effect,
                 narrative_role=clip_draft.narrative_role,
                 rationale=clip_draft.rationale,
+                sfx_gain=_clip_sfx_gain(clip_draft),
             )
         )
         cur_dst = dst_end
         if is_last:
             break
 
+    max_sfx_gain = max((c.sfx_gain for c in solved_clips), default=0.0)
+    resolved_sfx_path = (
+        str(sfx_audio_path)
+        if sfx_audio_path is not None and max_sfx_gain > 0.0
+        else None
+    )
+
     return EditTimeline(
         source_video_path=str(source_video_path),
         render_video_path=str(render_video_path),
         audio_path=str(audio_path),
         target_fps=target_fps,
+        width=width,
+        height=height,
         framing=framing,
+        grade=resolved_grade,
+        sfx_audio_path=resolved_sfx_path,
+        sfx_mix=max_sfx_gain,
         audio_start_ms=audio.selected_window_start_ms,
         audio_duration_ms=audio_dur,
         clips=solved_clips,

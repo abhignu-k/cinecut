@@ -37,6 +37,9 @@ def test_normalize_shot_spans_filters_flashes_and_splits_long() -> None:
     assert spans[0][0] == 0
     assert spans[-1][1] == 10000
 
+    unsplit = normalize_shot_spans([(0, 11000)], total_ms=11000)
+    assert unsplit == [(0, 11000)]
+
 
 def test_index_video_shots_extracts_scores_and_keyframes(
     tmp_path: Path,

@@ -66,6 +66,8 @@ def index_video_shots(
     video_fps: RationalFPS,
     cache_dir: Path,
     *,
+    has_audio: bool = False,
+    max_shot_ms: int = 12000,
     use_cache: bool = True,
 ) -> ShotCatalog:
     """Detect, score, and extract keyframes for all shots in a video.
@@ -74,6 +76,8 @@ def index_video_shots(
         video_path: Path to source or CFR proxy video.
         video_fps: Exact rational frame rate of `video_path`.
         cache_dir: Root cache directory.
+        has_audio: Whether the source video carries an audio stream.
+        max_shot_ms: Maximum normalized shot duration in milliseconds.
         use_cache: Reuse cached `shots.json` if present.
 
     Returns:
@@ -83,11 +87,14 @@ def index_video_shots(
     media_cache = cache_dir / "media" / media_key
     catalog_path = media_cache / "shots.json"
     if use_cache and catalog_path.exists():
-        return ShotCatalog.model_validate_json(
+        cached = ShotCatalog.model_validate_json(
             catalog_path.read_text(encoding="utf-8")
         )
+        if has_audio and not cached.has_audio:
+            return cached.model_copy(update={"has_audio": True})
+        return cached
 
-    spans = detect_shots(video_path, video_fps)
+    spans = detect_shots(video_path, video_fps, max_shot_ms=max_shot_ms)
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Failed to open video for scoring: {video_path}")
@@ -123,6 +130,7 @@ def index_video_shots(
     catalog = ShotCatalog(
         source_path=str(video_path),
         video_fps=video_fps,
+        has_audio=has_audio,
         shots=shots,
     )
     media_cache.mkdir(parents=True, exist_ok=True)

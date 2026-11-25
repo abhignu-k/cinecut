@@ -10,13 +10,25 @@
       "type": "string"
     },
     "FramingMode": {
-      "description": "Vertical 9:16 framing strategy for source footage.",
+      "description": "Target aspect framing strategy for source footage.",
       "enum": [
         "blur",
         "cinema",
         "crop"
       ],
       "title": "FramingMode",
+      "type": "string"
+    },
+    "GradePreset": {
+      "description": "Supported cinematic color-grading presets.",
+      "enum": [
+        "auto",
+        "moody",
+        "warm",
+        "crisp",
+        "none"
+      ],
+      "title": "GradePreset",
       "type": "string"
     },
     "NarrativeRole": {
@@ -85,6 +97,13 @@
           "default": "",
           "title": "Rationale",
           "type": "string"
+        },
+        "sfx_gain": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Sfx Gain",
+          "type": "number"
         },
         "shot_id": {
           "minLength": 1,
@@ -162,6 +181,10 @@
       "$ref": "#/$defs/FramingMode",
       "default": "blur"
     },
+    "grade": {
+      "$ref": "#/$defs/GradePreset",
+      "default": "moody"
+    },
     "height": {
       "default": 1920,
       "exclusiveMinimum": 0,
@@ -172,6 +195,25 @@
       "minLength": 1,
       "title": "Render Video Path",
       "type": "string"
+    },
+    "sfx_audio_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sfx Audio Path"
+    },
+    "sfx_mix": {
+      "default": 0.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Sfx Mix",
+      "type": "number"
     },
     "source_video_path": {
       "minLength": 1,

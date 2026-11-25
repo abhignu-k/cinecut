@@ -96,5 +96,40 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
 
     otio_tl.tracks.append(video_track)
     otio_tl.tracks.append(audio_track)
+    if timeline.has_active_sfx() and timeline.sfx_audio_path is not None:
+        sfx_track = otio.schema.Track(
+            name="SFX", kind=otio.schema.TrackKind.Audio
+        )
+        sfx_uri = Path(timeline.sfx_audio_path).resolve().as_uri()
+        sfx_ref = otio.schema.ExternalReference(target_url=sfx_uri)
+        for clip in timeline.clips:
+            start_f = fps.ms_to_frame(clip.dst_start_ms)
+            end_f = fps.ms_to_frame(clip.dst_end_ms)
+            dst_frames = max(1, end_f - start_f)
+            if clip.sfx_gain > 0.0:
+                sfx_clip = otio.schema.Clip(
+                    name=f"{clip.shot_id}_sfx",
+                    media_reference=sfx_ref.clone(),
+                    source_range=otio.opentime.TimeRange(
+                        start_time=_ms_to_rt(clip.src_start_ms, fps),
+                        duration=_frames_to_rt(dst_frames, fps),
+                    ),
+                    metadata={"sfx_gain": clip.sfx_gain},
+                )
+                if abs(clip.speed - 1.0) > 1e-4:
+                    sfx_clip.effects.append(
+                        otio.schema.LinearTimeWarp(time_scalar=clip.speed)
+                    )
+                sfx_track.append(sfx_clip)
+            else:
+                sfx_track.append(
+                    otio.schema.Gap(
+                        source_range=otio.opentime.TimeRange(
+                            start_time=_frames_to_rt(0, fps),
+                            duration=_frames_to_rt(dst_frames, fps),
+                        )
+                    )
+                )
+        otio_tl.tracks.append(sfx_track)
     otio.adapters.write_to_file(otio_tl, str(output_otio))
     return output_otio
