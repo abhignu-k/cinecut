@@ -169,10 +169,13 @@ def test_filtergraph_aspects_grades_and_selective_sfx(tmp_path: Path) -> None:
     assert "crop=w='min(iw,ih*1440/1080)'" in script
     assert "scale=1440:1080:flags=lanczos,setsar=1" in script
     assert "colorbalance=rs=0.06:gs=0.01:bs=-0.05" in script
-    assert "atempo=0.500000,atempo=0.500000,volume=0.2500" in script
     assert (
-        "[2:a]atrim=start=0.500000:end=1.500000,asetpts=PTS-STARTPTS,volume=0.0000[as1]"
+        "atempo=0.500000,atempo=0.500000,apad,atrim=0:1.000000,volume=0.2500"
         in script
+    )
+    assert (
+        "[2:a]atrim=start=0.500000:end=1.500000,asetpts=PTS-STARTPTS,"
+        "apad,atrim=0:1.000000,volume=0.0000[as1]" in script
     )
     assert (
         "[amusic][asfx]amix=inputs=2:duration=first:normalize=0[aout]" in script

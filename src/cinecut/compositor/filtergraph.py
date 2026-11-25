@@ -138,6 +138,8 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
                 f"atrim=start={src_s:.6f}:end={src_e:.6f}",
                 "asetpts=PTS-STARTPTS",
                 *_atempo_chain(clip.speed),
+                "apad",
+                f"atrim=0:{dst_dur:.6f}",
                 f"volume={clip.sfx_gain:.4f}",
             ]
             if clip.sfx_gain > 0.0:

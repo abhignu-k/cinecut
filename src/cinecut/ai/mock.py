@@ -102,8 +102,7 @@ class MockBackend:
 
         cuts: list[int] = [0]
         for b in win_beats:
-            mid = (cuts[-1] + b) // 2
-            lbl = _section_for_ms(win_sections, mid)
+            lbl = _section_for_ms(win_sections, b)
             min_step = (
                 hold_step_ms
                 if lbl in (SectionLabel.INTRO, SectionLabel.BUILDUP)

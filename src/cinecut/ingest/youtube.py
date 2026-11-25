@@ -79,7 +79,10 @@ def resolve_media_source(
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info: dict[str, Any] = ydl.extract_info(source, download=True)
         if "entries" in info:
-            entries = info.get("entries") or []
+            raw_entries = info.get("entries") or ()
+            entries = [
+                entry for entry in raw_entries if isinstance(entry, dict)
+            ]
             if not entries:
                 raise IngestError(f"No downloadable media found for: {source}")
             info = entries[0]

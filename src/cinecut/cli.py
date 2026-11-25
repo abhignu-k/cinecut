@@ -339,9 +339,12 @@ def plan(
         catalog = ShotCatalog.model_validate_json(
             shots_json.read_text(encoding="utf-8")
         )
+        src_info = (
+            probe_media(render_video) if aspect == AspectPreset.AUTO else None
+        )
         src_w, src_h = (
-            (probe_media(render_video).width, probe_media(render_video).height)
-            if aspect == AspectPreset.AUTO
+            (src_info.width, src_info.height)
+            if src_info is not None
             else (16, 9)
         )
         width, height = resolve_dimensions(aspect, src_w, src_h)

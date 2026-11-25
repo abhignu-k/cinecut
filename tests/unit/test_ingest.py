@@ -180,3 +180,44 @@ def test_youtube_url_detection_and_missing_extra(
         resolve_media_source(
             "https://youtube.com/watch?v=abc", tmp_path, kind="video"
         )
+
+    downloaded = tmp_path / "song.m4a"
+    downloaded.write_bytes(b"m4a")
+
+    class FakeYDL:
+        def __init__(self, opts: object) -> None:
+            self.opts = opts
+
+        def __enter__(self) -> "FakeYDL":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def extract_info(
+            self, url: str, download: bool = True
+        ) -> dict[str, object]:
+            if "empty" in url:
+                return {"entries": []}
+            return {
+                "entries": iter(
+                    [
+                        None,
+                        {
+                            "requested_downloads": [
+                                {"filepath": str(downloaded)}
+                            ]
+                        },
+                    ]
+                )
+            }
+
+    fake_yt = MagicMock()
+    fake_yt.YoutubeDL = FakeYDL
+    monkeypatch.setitem(__import__("sys").modules, "yt_dlp", fake_yt)
+    resolved = resolve_media_source(
+        "ytsearch1:Kanye West All Of The Lights", tmp_path, kind="audio"
+    )
+    assert resolved == downloaded
+    with pytest.raises(IngestError, match="No downloadable media"):
+        resolve_media_source("ytsearch1:empty", tmp_path, kind="audio")
