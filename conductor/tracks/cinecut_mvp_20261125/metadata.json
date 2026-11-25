@@ -1,0 +1,8 @@
+{
+  "track_id": "cinecut_mvp_20261125",
+  "type": "mvp",
+  "status": "new",
+  "created_at": "2026-11-25T00:03:57-05:00",
+  "updated_at": "2026-11-25T00:03:57-05:00",
+  "description": "cinecut v0.1 MVP — Open-source Python repo skeleton, Elephant schemas/spec, and end-to-end audio-vision-AI-compositor pipeline."
+}
