@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "SectionLabel": {
+      "description": "Semantic musical section classification.",
+      "enum": [
+        "intro",
+        "buildup",
+        "drop",
+        "bridge",
+        "outro"
+      ],
+      "title": "SectionLabel",
+      "type": "string"
+    },
+    "SongSection": {
+      "description": "Contiguous musical section with normalized energy.",
+      "properties": {
+        "end_ms": {
+          "exclusiveMinimum": 0,
+          "title": "End Ms",
+          "type": "integer"
+        },
+        "energy": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Energy",
+          "type": "number"
+        },
+        "label": {
+          "$ref": "#/$defs/SectionLabel"
+        },
+        "start_ms": {
+          "minimum": 0,
+          "title": "Start Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start_ms",
+        "end_ms",
+        "label",
+        "energy"
+      ],
+      "title": "SongSection",
+      "type": "object"
+    },
+    "StemEnergyCurve": {
+      "description": "Per-beat normalized energy curves for separated audio stems.",
+      "properties": {
+        "bass": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Bass",
+          "type": "array"
+        },
+        "drums": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Drums",
+          "type": "array"
+        },
+        "vocals": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Vocals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "drums",
+        "bass",
+        "vocals"
+      ],
+      "title": "StemEnergyCurve",
+      "type": "object"
+    }
+  },
+  "description": "Complete musical analysis and selected highlight window.",
+  "properties": {
+    "beats_ms": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Beats Ms",
+      "type": "array"
+    },
+    "bpm": {
+      "exclusiveMinimum": 0.0,
+      "title": "Bpm",
+      "type": "number"
+    },
+    "downbeats_ms": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Downbeats Ms",
+      "type": "array"
+    },
+    "duration_ms": {
+      "exclusiveMinimum": 0,
+      "title": "Duration Ms",
+      "type": "integer"
+    },
+    "sample_rate": {
+      "exclusiveMinimum": 0,
+      "title": "Sample Rate",
+      "type": "integer"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/SongSection"
+      },
+      "title": "Sections",
+      "type": "array"
+    },
+    "selected_window_end_ms": {
+      "exclusiveMinimum": 0,
+      "title": "Selected Window End Ms",
+      "type": "integer"
+    },
+    "selected_window_start_ms": {
+      "minimum": 0,
+      "title": "Selected Window Start Ms",
+      "type": "integer"
+    },
+    "stem_curves": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StemEnergyCurve"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "sample_rate",
+    "duration_ms",
+    "bpm",
+    "beats_ms",
+    "downbeats_ms",
+    "sections",
+    "selected_window_start_ms",
+    "selected_window_end_ms"
+  ],
+  "title": "AudioAnalysis",
+  "type": "object"
+}

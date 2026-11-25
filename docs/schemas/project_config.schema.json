@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "EngineType": {
+      "description": "Supported AI planning engine backends.",
+      "enum": [
+        "gemini",
+        "gemma",
+        "mock"
+      ],
+      "title": "EngineType",
+      "type": "string"
+    }
+  },
+  "description": "Top-level configuration for a cinecut edit run.",
+  "properties": {
+    "audio_source": {
+      "minLength": 1,
+      "title": "Audio Source",
+      "type": "string"
+    },
+    "audio_start_s": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audio Start S"
+    },
+    "cache_dir": {
+      "default": ".cinecut_cache",
+      "title": "Cache Dir",
+      "type": "string"
+    },
+    "dry_run_ffmpeg": {
+      "default": false,
+      "title": "Dry Run Ffmpeg",
+      "type": "boolean"
+    },
+    "duration_s": {
+      "default": 30.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Duration S",
+      "type": "number"
+    },
+    "engine": {
+      "$ref": "#/$defs/EngineType",
+      "default": "gemini"
+    },
+    "full_audio": {
+      "default": false,
+      "title": "Full Audio",
+      "type": "boolean"
+    },
+    "height": {
+      "default": 1920,
+      "exclusiveMinimum": 0,
+      "title": "Height",
+      "type": "integer"
+    },
+    "local_model": {
+      "default": "gemma3:12b",
+      "title": "Local Model",
+      "type": "string"
+    },
+    "local_url": {
+      "default": "http://127.0.0.1:11434",
+      "title": "Local Url",
+      "type": "string"
+    },
+    "no_cache": {
+      "default": false,
+      "title": "No Cache",
+      "type": "boolean"
+    },
+    "stems": {
+      "default": false,
+      "title": "Stems",
+      "type": "boolean"
+    },
+    "target_fps": {
+      "default": 30,
+      "maximum": 120,
+      "minimum": 1,
+      "title": "Target Fps",
+      "type": "integer"
+    },
+    "vibe": {
+      "minLength": 1,
+      "title": "Vibe",
+      "type": "string"
+    },
+    "video_source": {
+      "minLength": 1,
+      "title": "Video Source",
+      "type": "string"
+    },
+    "width": {
+      "default": 1080,
+      "exclusiveMinimum": 0,
+      "title": "Width",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "video_source",
+    "audio_source",
+    "vibe"
+  ],
+  "title": "ProjectConfig",
+  "type": "object"
+}

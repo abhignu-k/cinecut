@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "RationalFPS": {
+      "description": "Exact rational frame rate (e.g., 30000/1001 for 29.97 fps).",
+      "properties": {
+        "den": {
+          "description": "Frame rate denominator.",
+          "exclusiveMinimum": 0,
+          "title": "Den",
+          "type": "integer"
+        },
+        "num": {
+          "description": "Frame rate numerator.",
+          "exclusiveMinimum": 0,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ],
+      "title": "RationalFPS",
+      "type": "object"
+    },
+    "ShotMetadata": {
+      "description": "Indexed visual shot with motion, sharpness, and crop anchor.",
+      "properties": {
+        "crop_x_norm": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Crop X Norm",
+          "type": "number"
+        },
+        "end_frame": {
+          "exclusiveMinimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "end_ms": {
+          "exclusiveMinimum": 0,
+          "title": "End Ms",
+          "type": "integer"
+        },
+        "keyframe_paths": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Keyframe Paths",
+          "type": "array"
+        },
+        "motion_score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Motion Score",
+          "type": "number"
+        },
+        "sharpness_score": {
+          "minimum": 0.0,
+          "title": "Sharpness Score",
+          "type": "number"
+        },
+        "shot_id": {
+          "minLength": 1,
+          "title": "Shot Id",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        },
+        "start_ms": {
+          "minimum": 0,
+          "title": "Start Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "shot_id",
+        "start_ms",
+        "end_ms",
+        "start_frame",
+        "end_frame",
+        "motion_score",
+        "sharpness_score"
+      ],
+      "title": "ShotMetadata",
+      "type": "object"
+    }
+  },
+  "description": "Ordered catalog of visual shots indexed from a source/proxy video.",
+  "properties": {
+    "shots": {
+      "items": {
+        "$ref": "#/$defs/ShotMetadata"
+      },
+      "title": "Shots",
+      "type": "array"
+    },
+    "source_path": {
+      "minLength": 1,
+      "title": "Source Path",
+      "type": "string"
+    },
+    "video_fps": {
+      "$ref": "#/$defs/RationalFPS"
+    }
+  },
+  "required": [
+    "source_path",
+    "video_fps",
+    "shots"
+  ],
+  "title": "ShotCatalog",
+  "type": "object"
+}

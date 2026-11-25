@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "RationalFPS": {
+      "description": "Exact rational frame rate (e.g., 30000/1001 for 29.97 fps).",
+      "properties": {
+        "den": {
+          "description": "Frame rate denominator.",
+          "exclusiveMinimum": 0,
+          "title": "Den",
+          "type": "integer"
+        },
+        "num": {
+          "description": "Frame rate numerator.",
+          "exclusiveMinimum": 0,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ],
+      "title": "RationalFPS",
+      "type": "object"
+    }
+  },
+  "description": "Probed metadata for a normalized or raw media stream.",
+  "properties": {
+    "audio_sample_rate": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audio Sample Rate"
+    },
+    "duration_ms": {
+      "exclusiveMinimum": 0,
+      "title": "Duration Ms",
+      "type": "integer"
+    },
+    "fps": {
+      "$ref": "#/$defs/RationalFPS"
+    },
+    "has_audio": {
+      "default": false,
+      "title": "Has Audio",
+      "type": "boolean"
+    },
+    "height": {
+      "exclusiveMinimum": 0,
+      "title": "Height",
+      "type": "integer"
+    },
+    "is_vfr": {
+      "default": false,
+      "title": "Is Vfr",
+      "type": "boolean"
+    },
+    "path": {
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+    },
+    "width": {
+      "exclusiveMinimum": 0,
+      "title": "Width",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "path",
+    "width",
+    "height",
+    "duration_ms",
+    "fps"
+  ],
+  "title": "MediaInfo",
+  "type": "object"
+}
