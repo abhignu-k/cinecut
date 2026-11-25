@@ -10,6 +10,14 @@ from typing import Annotated
 import typer
 from pydantic import ValidationError
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 
 from cinecut import __version__
@@ -329,72 +337,119 @@ def edit(
     verbose: Annotated[bool, typer.Option("--verbose")] = False,
 ) -> None:
     """Run the full end-to-end cinecut editing pipeline."""
-    try:
-        raw_video = resolve_media_source(video, cache_dir, kind="video")
-        raw_audio = resolve_media_source(audio, cache_dir, kind="audio")
-        render_video, media_info = prepare_video(
-            raw_video, cache_dir, use_cache=not no_cache
-        )
-        wav_path = prepare_audio(raw_audio, cache_dir, use_cache=not no_cache)
-        audio_analysis = analyze_audio(
-            wav_path,
-            target_duration_ms=round(duration * 1000),
-            audio_start_ms=(
-                round(audio_start * 1000) if audio_start is not None else None
-            ),
-            full_audio=full_audio,
-            use_stems=stems,
-        )
-        catalog = index_video_shots(
-            render_video,
-            media_info.fps,
-            cache_dir,
-            use_cache=not no_cache,
-        )
-        if verbose and not quiet and not json_out:
-            typer.echo(
-                f"[cinecut] BPM={audio_analysis.bpm:.1f}, "
-                f"shots={len(catalog.shots)}, proxy={render_video}",
-                err=True,
+    err_console = Console(stderr=True)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=err_console,
+        transient=True,
+        disable=quiet or json_out,
+    ) as progress:
+        task_id = progress.add_task("Resolving media sources...", total=7)
+        try:
+            raw_video = resolve_media_source(video, cache_dir, kind="video")
+            raw_audio = resolve_media_source(audio, cache_dir, kind="audio")
+            progress.update(
+                task_id, advance=1, description="Preparing video & audio..."
             )
-    except (FileNotFoundError, IngestError, MissingExtraError) as exc:
-        typer.echo(f"Ingest/analysis error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+            render_video, media_info = prepare_video(
+                raw_video, cache_dir, use_cache=not no_cache
+            )
+            wav_path = prepare_audio(
+                raw_audio, cache_dir, use_cache=not no_cache
+            )
+            progress.update(
+                task_id,
+                advance=1,
+                description="Analyzing musical beats & structure...",
+            )
+            audio_analysis = analyze_audio(
+                wav_path,
+                target_duration_ms=round(duration * 1000),
+                audio_start_ms=(
+                    round(audio_start * 1000)
+                    if audio_start is not None
+                    else None
+                ),
+                full_audio=full_audio,
+                use_stems=stems,
+            )
+            progress.update(
+                task_id,
+                advance=1,
+                description="Indexing shots & keyframes...",
+            )
+            catalog = index_video_shots(
+                render_video,
+                media_info.fps,
+                cache_dir,
+                use_cache=not no_cache,
+            )
+            if verbose and not quiet and not json_out:
+                err_console.print(
+                    f"[dim][cinecut] BPM={audio_analysis.bpm:.1f}, "
+                    f"shots={len(catalog.shots)}, proxy={render_video}[/dim]"
+                )
+        except (FileNotFoundError, IngestError, MissingExtraError) as exc:
+            progress.stop()
+            typer.echo(f"Ingest/analysis error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
 
-    try:
-        backend = _build_backend(engine, local_url, local_model, gemini_model)
-        draft = backend.generate_draft(audio_analysis, catalog, vibe)
-        timeline = solve_timeline(
-            draft,
-            audio_analysis,
-            catalog,
-            source_video_path=raw_video,
-            render_video_path=render_video,
-            audio_path=wav_path,
-            target_fps=RationalFPS(num=fps, den=1),
+        try:
+            progress.update(
+                task_id,
+                advance=1,
+                description=f"Planning edit ({engine.value})...",
+            )
+            backend = _build_backend(
+                engine, local_url, local_model, gemini_model
+            )
+            draft = backend.generate_draft(audio_analysis, catalog, vibe)
+            progress.update(
+                task_id, advance=1, description="Solving timeline & A/V sync..."
+            )
+            timeline = solve_timeline(
+                draft,
+                audio_analysis,
+                catalog,
+                source_video_path=raw_video,
+                render_video_path=render_video,
+                audio_path=wav_path,
+                target_fps=RationalFPS(num=fps, den=1),
+            )
+        except (AIBackendError, PlannerError) as exc:
+            progress.stop()
+            typer.echo(f"Planning error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        timeline_json = cache_dir / "timeline.json"
+        timeline_json.write_text(
+            timeline.model_dump_json(indent=2) + "\n", encoding="utf-8"
         )
-    except (AIBackendError, PlannerError) as exc:
-        typer.echo(f"Planning error: {exc}", err=True)
-        raise typer.Exit(code=2) from exc
 
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    timeline_json = cache_dir / "timeline.json"
-    timeline_json.write_text(
-        timeline.model_dump_json(indent=2) + "\n", encoding="utf-8"
-    )
-
-    try:
-        cmd = render_timeline(
-            timeline,
-            out,
-            script_path=cache_dir / "render.ffscript",
-            dry_run=dry_run_ffmpeg,
-            videotoolbox=videotoolbox,
-        )
-        otio_path = export_otio(timeline, otio_out)
-    except CompositorError as exc:
-        typer.echo(f"Render error: {exc}", err=True)
-        raise typer.Exit(code=3) from exc
+        try:
+            progress.update(
+                task_id,
+                advance=1,
+                description="Rendering 1080x1920 MP4 & .otio...",
+            )
+            cmd = render_timeline(
+                timeline,
+                out,
+                script_path=cache_dir / "render.ffscript",
+                dry_run=dry_run_ffmpeg,
+                videotoolbox=videotoolbox,
+            )
+            otio_path = export_otio(timeline, otio_out)
+            progress.update(task_id, advance=1, description="Done")
+        except CompositorError as exc:
+            progress.stop()
+            typer.echo(f"Render error: {exc}", err=True)
+            raise typer.Exit(code=3) from exc
 
     if json_out:
         typer.echo(
