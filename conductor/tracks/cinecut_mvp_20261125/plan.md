@@ -1,12 +1,12 @@
 # Implementation Plan: cinecut v0.1 MVP
 
 ## Phase 1: Repository Skeleton, Tooling & Environment Bootstrap
-- [ ] Task: Initialize MIT open-source Python package skeleton and development tooling
-  - [ ] Create `.gitignore`, MIT `LICENSE`, `pyproject.toml` (`hatchling`, Python `>=3.11,<3.14`, core deps + `[stems]`, `[yt]`, `[dev]` extras), `README.md`, and `CONTRIBUTING.md` stubs
-  - [ ] Provision `.venv` with `/usr/local/bin/python3.12` and install editable package with `[dev]` tools (`ruff`, `mypy`, `pytest`, `pytest-cov`)
-  - [ ] Configure `.github/workflows/ci.yml` (`ruff`, `mypy`, `pytest`)
-- [ ] Task: Add failing smoke test and minimal CLI package entrypoint (TDD Red -> Green)
-  - [ ] Write failing test verifying `cinecut --help` and package import/version
+- [x] Task: Initialize MIT open-source Python package skeleton and development tooling (37e7dc1)
+  - [x] Create `.gitignore`, MIT `LICENSE`, `pyproject.toml` (`hatchling`, Python `>=3.11,<3.14`, core deps + `[stems]`, `[yt]`, `[dev]` extras), `README.md`, and `CONTRIBUTING.md` stubs
+  - [x] Provision `.venv` with `/usr/local/bin/python3.12` and install editable package with `[dev]` tools (`ruff`, `mypy`, `pytest`, `pytest-cov`)
+  - [x] Configure `.github/workflows/ci.yml` (`ruff`, `mypy`, `pytest`)
+- [~] Task: Add failing smoke test and minimal CLI package entrypoint (TDD Red -> Green)
+  - [~] Write failing test verifying `cinecut --help` and package import/version
   - [ ] Implement `src/cinecut/__init__.py` and minimal `src/cinecut/cli.py` Typer app until test passes
 - [ ] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
