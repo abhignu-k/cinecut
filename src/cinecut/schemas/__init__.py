@@ -19,16 +19,19 @@ from cinecut.schemas.project import EngineType, MediaInfo, ProjectConfig
 from cinecut.schemas.timebase import RationalFPS
 from cinecut.schemas.timeline import (
     AspectPreset,
+    EditScript,
     EditTimeline,
     EditTimelineDraft,
     EffectType,
     FramingMode,
     GradePreset,
     NarrativeRole,
+    ScriptBeat,
     TimelineClip,
     TimelineClipDraft,
     TransitionType,
     resolve_dimensions,
+    resolve_framing_mode,
     resolve_output_spec,
 )
 from cinecut.schemas.vision import CropRect, ShotCatalog, ShotMetadata
@@ -37,6 +40,7 @@ __all__ = [
     "AspectPreset",
     "AudioAnalysis",
     "CropRect",
+    "EditScript",
     "EditTimeline",
     "EditTimelineDraft",
     "EffectType",
@@ -47,6 +51,7 @@ __all__ = [
     "NarrativeRole",
     "ProjectConfig",
     "RationalFPS",
+    "ScriptBeat",
     "SectionLabel",
     "ShotCatalog",
     "ShotMetadata",
@@ -59,6 +64,7 @@ __all__ = [
     "TransitionType",
     "export_json_schemas",
     "resolve_dimensions",
+    "resolve_framing_mode",
     "resolve_output_spec",
 ]
 
@@ -67,6 +73,7 @@ _SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "media_info.schema.json": MediaInfo,
     "audio_analysis.schema.json": AudioAnalysis,
     "shot_catalog.schema.json": ShotCatalog,
+    "edit_script.schema.json": EditScript,
     "edit_timeline_draft.schema.json": EditTimelineDraft,
     "edit_timeline.schema.json": EditTimeline,
     "song_recommendations.schema.json": SongRecommendationList,

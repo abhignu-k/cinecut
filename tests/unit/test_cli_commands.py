@@ -251,3 +251,88 @@ def test_composable_analyze_plan_render_dry_run(tmp_path: Path) -> None:
         ],
     )
     assert bad_sfx.exit_code != 0
+
+    script_out = out_dir / "story.json"
+    res_sc = runner.invoke(
+        app,
+        [
+            "script",
+            "--video",
+            str(video),
+            "--audio",
+            str(audio),
+            "--vibe",
+            "football reel comeback",
+            "--engine",
+            "mock",
+            "--duration",
+            "2.0",
+            "--cache-dir",
+            str(cache_dir),
+            "--out",
+            str(script_out),
+            "--json",
+        ],
+    )
+    assert res_sc.exit_code == 0, res_sc.output
+    assert script_out.exists()
+    sc_data = json.loads(res_sc.output)
+    assert sc_data["recommended_aspect"] == "9:16"
+
+    res_two_pass = runner.invoke(
+        app,
+        [
+            "edit",
+            "--video",
+            str(video),
+            "--audio",
+            str(audio),
+            "--vibe",
+            "football reel comeback",
+            "--engine",
+            "mock",
+            "--two-pass",
+            "--duration",
+            "2.0",
+            "--cache-dir",
+            str(cache_dir),
+            "--out",
+            str(tmp_path / "tp.mp4"),
+            "--otio",
+            str(tmp_path / "tp.otio"),
+            "--dry-run-ffmpeg",
+            "--json",
+        ],
+    )
+    assert res_two_pass.exit_code == 0, res_two_pass.output
+    tp_data = json.loads(res_two_pass.output)
+    assert tp_data["width"] == 1080
+    assert tp_data["height"] == 1920
+    assert Path(tp_data["script_json"]).exists()
+
+    res_ext_script = runner.invoke(
+        app,
+        [
+            "plan",
+            "--audio-json",
+            a_info["audio_json"],
+            "--shots-json",
+            a_info["shots_json"],
+            "--source-video",
+            a_info["source_video"],
+            "--render-video",
+            a_info["render_video"],
+            "--audio-wav",
+            a_info["audio_wav"],
+            "--vibe",
+            "night run",
+            "--engine",
+            "mock",
+            "--script",
+            str(script_out),
+            "--out-json",
+            str(out_dir / "ext_timeline.json"),
+            "--json",
+        ],
+    )
+    assert res_ext_script.exit_code == 0, res_ext_script.output

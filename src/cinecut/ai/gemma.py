@@ -13,10 +13,12 @@ from cinecut.ai.base import AIBackendError
 from cinecut.ai.prompts import (
     build_contact_sheets,
     build_editing_prompt,
+    build_script_prompt,
     build_song_recommendation_prompt,
 )
 from cinecut.schemas import (
     AudioAnalysis,
+    EditScript,
     EditTimelineDraft,
     ShotCatalog,
     SongRecommendationList,
@@ -134,19 +136,38 @@ class GemmaBackend:
             f"Gemma failed to produce valid JSON after retries: {last_err}"
         )
 
+    def generate_script(
+        self,
+        audio: AudioAnalysis,
+        catalog: ShotCatalog,
+        vibe: str,
+    ) -> EditScript:
+        """Write an `EditScript` storyboard via local Ollama `/api/chat`."""
+        result: EditScript = self._chat_structured(
+            build_script_prompt(audio, catalog, vibe),
+            catalog,
+            EditScript,
+            "EditScript",
+        )
+        return result
+
     def generate_draft(
         self,
         audio: AudioAnalysis,
         catalog: ShotCatalog,
         vibe: str,
+        *,
+        script: EditScript | None = None,
     ) -> EditTimelineDraft:
         """Query local Ollama `/api/chat` with bounded JSON repair retries."""
         result: EditTimelineDraft = self._chat_structured(
-            build_editing_prompt(audio, catalog, vibe),
+            build_editing_prompt(audio, catalog, vibe, script=script),
             catalog,
             EditTimelineDraft,
             "EditTimelineDraft",
         )
+        if script is not None and result.script is None:
+            result = result.model_copy(update={"script": script})
         return result
 
     def recommend_songs(

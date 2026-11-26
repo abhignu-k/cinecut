@@ -15,10 +15,12 @@ from cinecut.ai.base import AIBackendError
 from cinecut.ai.prompts import (
     build_contact_sheets,
     build_editing_prompt,
+    build_script_prompt,
     build_song_recommendation_prompt,
 )
 from cinecut.schemas import (
     AudioAnalysis,
+    EditScript,
     EditTimelineDraft,
     ShotCatalog,
     SongRecommendationList,
@@ -133,19 +135,40 @@ class GeminiBackend:
                 f"Gemini returned invalid {schema_name} JSON: {exc}"
             ) from exc
 
+    def generate_script(
+        self,
+        audio: AudioAnalysis,
+        catalog: ShotCatalog,
+        vibe: str,
+    ) -> EditScript:
+        """Write an `EditScript` storyboard via Gemini structured output."""
+        contents = self._build_contents(
+            build_script_prompt(audio, catalog, vibe), catalog, max_shots=48
+        )
+        result: EditScript = self._call_structured(
+            contents, EditScript, "EditScript"
+        )
+        return result
+
     def generate_draft(
         self,
         audio: AudioAnalysis,
         catalog: ShotCatalog,
         vibe: str,
+        *,
+        script: EditScript | None = None,
     ) -> EditTimelineDraft:
         """Call Gemini structured output with transient 503/429 backoff."""
         contents = self._build_contents(
-            build_editing_prompt(audio, catalog, vibe), catalog, max_shots=48
+            build_editing_prompt(audio, catalog, vibe, script=script),
+            catalog,
+            max_shots=48,
         )
         result: EditTimelineDraft = self._call_structured(
             contents, EditTimelineDraft, "EditTimelineDraft"
         )
+        if script is not None and result.script is None:
+            result = result.model_copy(update={"script": script})
         return result
 
     def recommend_songs(

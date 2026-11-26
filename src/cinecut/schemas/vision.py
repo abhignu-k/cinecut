@@ -25,6 +25,8 @@ class ShotMetadata(BaseModel):
     motion_score: float = Field(ge=0.0, le=1.0)
     sharpness_score: float = Field(ge=0.0)
     crop_x_norm: float = Field(default=0.5, ge=0.0, le=1.0)
+    crop_x_start: float | None = Field(default=None, ge=0.0, le=1.0)
+    crop_x_end: float | None = Field(default=None, ge=0.0, le=1.0)
     face_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
     text_clutter_score: float = Field(default=0.0, ge=0.0, le=1.0)
     is_dark_or_flat: bool = False

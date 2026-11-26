@@ -6,6 +6,7 @@ from typing import Protocol
 
 from cinecut.schemas import (
     AudioAnalysis,
+    EditScript,
     EditTimelineDraft,
     ShotCatalog,
     SongRecommendationList,
@@ -19,11 +20,21 @@ class AIBackendError(RuntimeError):
 class AIBackend(Protocol):
     """Pluggable AI director backend interface."""
 
+    def generate_script(
+        self,
+        audio: AudioAnalysis,
+        catalog: ShotCatalog,
+        vibe: str,
+    ) -> EditScript:
+        """Write a narrative `EditScript` storyboard for the video & audio."""
+
     def generate_draft(
         self,
         audio: AudioAnalysis,
         catalog: ShotCatalog,
         vibe: str,
+        *,
+        script: EditScript | None = None,
     ) -> EditTimelineDraft:
         """Generate an `EditTimelineDraft` matching audio, shots, and vibe."""
 

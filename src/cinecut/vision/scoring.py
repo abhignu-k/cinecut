@@ -20,6 +20,8 @@ class ShotVisualProfile:
     motion_score: float
     sharpness_score: float
     crop_x_norm: float
+    crop_x_start: float
+    crop_x_end: float
     face_ratio: float
     text_clutter_score: float
     is_dark_or_flat: bool
@@ -180,18 +182,42 @@ def _downscale_gray(
     return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
 
-def _compute_crop_x_norm(gray: cv2.typing.MatLike) -> float:
-    """Estimate horizontal subject energy centroid in [0.15, 0.85]."""
+def _compute_crop_x_norm(
+    gray: cv2.typing.MatLike,
+    prev_gray: cv2.typing.MatLike | None = None,
+) -> float:
+    """Estimate horizontal subject energy centroid in `[0.10, 0.90]`.
+
+    Blends inter-frame motion salience (when active) with spatial edge
+    energy so moving players/balls take priority over static backgrounds.
+    """
     sobel_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
     sobel_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
     mag = np.abs(sobel_x) + np.abs(sobel_y)
-    col_energy = np.sum(mag, axis=0)
-    total = float(np.sum(col_energy))
-    if total <= 1e-6:
+    edge_col = np.sum(mag, axis=0).astype(np.float32)
+    edge_total = float(np.sum(edge_col))
+    edge_dist = (
+        edge_col / edge_total
+        if edge_total > 1e-6
+        else np.full(gray.shape[1], 1.0 / max(1, gray.shape[1]), np.float32)
+    )
+
+    weights = edge_dist
+    if prev_gray is not None and prev_gray.shape == gray.shape:
+        diff = np.asarray(cv2.absdiff(prev_gray, gray), dtype=np.float32)
+        active = np.maximum(diff - 8.0, 0.0)
+        if float(np.mean(active)) >= 0.35:
+            motion_col = np.sum(active, axis=0)
+            motion_total = float(np.sum(motion_col))
+            if motion_total > 1e-6:
+                weights = 0.65 * (motion_col / motion_total) + 0.35 * edge_dist
+
+    weight_total = float(np.sum(weights))
+    if weight_total <= 1e-6:
         return 0.5
-    xs = np.arange(len(col_energy), dtype=np.float32)
-    center = float(np.sum(xs * col_energy) / total) / max(1, len(col_energy))
-    return float(np.clip(center, 0.15, 0.85))
+    xs = np.arange(len(weights), dtype=np.float32)
+    center = float(np.sum(xs * weights) / weight_total) / max(1, len(weights))
+    return float(np.clip(center, 0.10, 0.90))
 
 
 def _compute_text_clutter_score(gray: cv2.typing.MatLike) -> float:
@@ -261,7 +287,7 @@ def analyze_shot(
     if end_f - start_f <= 1:
         sample_indices = [start_f]
     else:
-        n_samples = min(5, end_f - start_f)
+        n_samples = min(6, end_f - start_f)
         sample_indices = [
             min(max_frame, int(x))
             for x in np.linspace(
@@ -288,7 +314,7 @@ def analyze_shot(
         gray = _downscale_gray(cropped)
         lap = cv2.Laplacian(gray, cv2.CV_64F)
         sharp_vals.append(float(lap.var()))
-        crop_vals.append(_compute_crop_x_norm(gray))
+        crop_vals.append(_compute_crop_x_norm(gray, prev_gray))
         clutter_vals.append(_compute_text_clutter_score(gray))
         gray_f = np.asarray(gray, dtype=np.float32)
         std_vals.append(float(np.std(gray_f)))
@@ -305,6 +331,8 @@ def analyze_shot(
             motion_score=0.0,
             sharpness_score=0.0,
             crop_x_norm=0.5,
+            crop_x_start=0.5,
+            crop_x_end=0.5,
             face_ratio=0.0,
             text_clutter_score=0.0,
             is_dark_or_flat=True,
@@ -315,6 +343,15 @@ def analyze_shot(
     motion_score = float(np.clip(raw_motion * 4.0, 0.0, 1.0))
     sharpness_score = float(np.mean(sharp_vals))
     crop_x_norm = float(np.mean(crop_vals))
+    if len(crop_vals) >= 3:
+        crop_x_start = (2.0 * crop_vals[0] + crop_vals[1]) / 3.0
+        crop_x_end = (crop_vals[-2] + 2.0 * crop_vals[-1]) / 3.0
+    elif len(crop_vals) == 2:
+        crop_x_start, crop_x_end = crop_vals[0], crop_vals[1]
+    else:
+        crop_x_start = crop_x_end = crop_x_norm
+    if abs(crop_x_end - crop_x_start) < 0.04:
+        crop_x_start = crop_x_end = crop_x_norm
     text_clutter_score = float(np.mean(clutter_vals))
     mean_std = float(np.mean(std_vals))
     mean_med = float(np.mean(med_vals))
@@ -330,6 +367,8 @@ def analyze_shot(
         motion_score=motion_score,
         sharpness_score=sharpness_score,
         crop_x_norm=crop_x_norm,
+        crop_x_start=float(np.clip(crop_x_start, 0.10, 0.90)),
+        crop_x_end=float(np.clip(crop_x_end, 0.10, 0.90)),
         face_ratio=face_ratio,
         text_clutter_score=text_clutter_score,
         is_dark_or_flat=is_dark_or_flat,

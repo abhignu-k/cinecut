@@ -55,6 +55,11 @@ def export_otio(timeline: EditTimeline, output_otio: Path) -> Path:
             ),
             metadata={
                 "crop_x_norm": clip.crop_x_norm,
+                **(
+                    {"crop_x_end_norm": clip.crop_x_end_norm}
+                    if clip.crop_x_end_norm is not None
+                    else {}
+                ),
                 "narrative_role": clip.narrative_role.value,
                 "effect": clip.effect.value,
                 "rationale": clip.rationale,

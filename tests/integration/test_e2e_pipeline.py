@@ -113,14 +113,49 @@ def test_e2e_edit_mock_engine_produces_mp4_and_otio(tmp_path: Path) -> None:
     streams = _ffprobe_streams(out_mp4)
     v_stream = next(s for s in streams if s["codec_type"] == "video")
     a_stream = next(s for s in streams if s["codec_type"] == "audio")
-    assert v_stream["width"] == 1440
-    assert v_stream["height"] == 1080
+    assert v_stream["width"] == 640
+    assert v_stream["height"] == 360
     v_dur = float(str(v_stream["duration"]))
     a_dur = float(str(a_stream["duration"]))
     assert abs(v_dur - a_dur) <= 0.1
 
     parsed_otio = otio.adapters.read_from_file(str(out_otio))
     assert len(parsed_otio.tracks) == 2
+
+    reel_mp4 = tmp_path / "reel.mp4"
+    reel_res = runner.invoke(
+        app,
+        [
+            "edit",
+            "--video",
+            str(video),
+            "--audio",
+            str(audio),
+            "--vibe",
+            "high energy football reel",
+            "--engine",
+            "mock",
+            "--duration",
+            "3.0",
+            "--fps",
+            "30",
+            "--out",
+            str(reel_mp4),
+            "--otio",
+            str(tmp_path / "reel.otio"),
+            "--cache-dir",
+            str(cache_dir),
+            "--json",
+        ],
+    )
+    assert reel_res.exit_code == 0, reel_res.output
+    reel_info = json.loads(reel_res.output)
+    assert reel_info["width"] == 1080
+    assert reel_info["height"] == 1920
+    reel_tl = json.loads(
+        Path(reel_info["timeline_json"]).read_text(encoding="utf-8")
+    )
+    assert reel_tl["framing"] == "crop"
 
 
 def test_e2e_sfx_mix_and_explicit_aspect_grade(tmp_path: Path) -> None:
@@ -290,10 +325,43 @@ def test_e2e_letterbox_strip_and_auto_framing(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["width"] == 1440
-    assert payload["height"] == 1080
+    assert payload["width"] == 640
+    assert payload["height"] == 240
     timeline_data = json.loads(
         Path(payload["timeline_json"]).read_text(encoding="utf-8")
     )
     assert timeline_data["source_crop"] is not None
-    assert timeline_data["framing"] == "blur"
+    assert timeline_data["framing"] == "crop"
+
+    blur_res = runner.invoke(
+        app,
+        [
+            "edit",
+            "--video",
+            str(lb_video),
+            "--audio",
+            str(audio),
+            "--vibe",
+            "dramatic comeback",
+            "--engine",
+            "mock",
+            "--aspect",
+            "4:3",
+            "--duration",
+            "3.0",
+            "--out",
+            str(tmp_path / "lb_blur.mp4"),
+            "--otio",
+            str(tmp_path / "lb_blur.otio"),
+            "--cache-dir",
+            str(cache_dir),
+            "--json",
+        ],
+    )
+    assert blur_res.exit_code == 0, blur_res.output
+    blur_tl = json.loads(
+        Path(json.loads(blur_res.output)["timeline_json"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert blur_tl["framing"] == "blur"

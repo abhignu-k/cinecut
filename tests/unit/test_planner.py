@@ -363,3 +363,54 @@ def test_solve_timeline_repairs_short_tail_draft(tmp_path: Path) -> None:
     assert tl.audio_duration_ms == 20000
     assert tl.clips[-1].dst_end_ms == 20000
     assert len(tl.clips) >= 5
+
+    pan_cat = ShotCatalog(
+        source_path="proxy.mp4",
+        video_fps=RationalFPS(num=30, den=1),
+        shots=[
+            ShotMetadata(
+                shot_id="pan_0",
+                start_ms=0,
+                end_ms=4000,
+                motion_score=0.8,
+                sharpness_score=100.0,
+                crop_x_norm=0.5,
+                crop_x_start=0.2,
+                crop_x_end=0.8,
+            )
+        ],
+    )
+    pan_audio = _sample_audio()
+    pan_draft = EditTimelineDraft(
+        clips=[
+            TimelineClipDraft(
+                shot_id="pan_0",
+                src_start_ms=0,
+                src_end_ms=2000,
+                dst_start_ms=0,
+                dst_end_ms=2000,
+            ),
+            TimelineClipDraft(
+                shot_id="pan_0",
+                src_start_ms=2000,
+                src_end_ms=4000,
+                dst_start_ms=2000,
+                dst_end_ms=4000,
+            ),
+        ]
+    )
+    pan_tl = solve_timeline(
+        pan_draft,
+        pan_audio,
+        pan_cat,
+        source_video_path=tmp_path / "raw.mp4",
+        render_video_path=tmp_path / "proxy.mp4",
+        audio_path=tmp_path / "audio.wav",
+        target_fps=RationalFPS(num=30, den=1),
+    )
+    assert pytest.approx(pan_tl.clips[0].crop_x_norm, abs=1e-2) == 0.2
+    assert pan_tl.clips[0].crop_x_end_norm is not None
+    assert pytest.approx(pan_tl.clips[0].crop_x_end_norm, abs=1e-2) == 0.5
+    assert pytest.approx(pan_tl.clips[1].crop_x_norm, abs=1e-2) == 0.5
+    assert pan_tl.clips[1].crop_x_end_norm is not None
+    assert pytest.approx(pan_tl.clips[1].crop_x_end_norm, abs=1e-2) == 0.8

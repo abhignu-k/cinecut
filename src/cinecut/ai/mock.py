@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from cinecut.planner.solver import shift_audio_to_window
 from cinecut.schemas import (
+    AspectPreset,
     AudioAnalysis,
+    EditScript,
     EditTimelineDraft,
     EffectType,
     GradePreset,
     NarrativeRole,
+    ScriptBeat,
     SectionLabel,
     ShotCatalog,
     ShotMetadata,
@@ -85,16 +88,126 @@ _MOCK_TRACK_POOL: tuple[tuple[str, str, int, str, str], ...] = (
 )
 
 
+def _aspect_from_vibe(vibe: str, catalog: ShotCatalog) -> AspectPreset:
+    """Infer sensible aspect preset without forcing 4:3 on widescreen."""
+    low = vibe.lower()
+    if any(
+        k in low
+        for k in (
+            "reel",
+            "short",
+            "tiktok",
+            "football",
+            "soccer",
+            "basketball",
+            "nba",
+            "ucl",
+        )
+    ):
+        return AspectPreset.VERTICAL_9_16
+    if catalog.active_crop is not None:
+        crop_ratio = catalog.active_crop.w / float(catalog.active_crop.h)
+        if crop_ratio > 1.95:
+            return AspectPreset.NATIVE
+    return AspectPreset.AUTO
+
+
+def _beat_goal(label: SectionLabel, vibe: str) -> tuple[str, str, str]:
+    """Return `(story_goal, visual_direction, pacing_style)` per section."""
+    if label == SectionLabel.INTRO:
+        return (
+            f"Establish atmosphere and central figure for '{vibe}'.",
+            "Clean opening framing with room to breathe.",
+            "hold",
+        )
+    if label == SectionLabel.BUILDUP:
+        return (
+            "Raise tension as rhythm accelerates toward the hook.",
+            "Hold buildup action/expressions without mid-play cuts.",
+            "build",
+        )
+    if label == SectionLabel.DROP:
+        return (
+            "Deliver peak payoff synced to bass drops and hits.",
+            "High-motion action paired with punchy closeup reactions.",
+            "rapid",
+        )
+    if label == SectionLabel.BRIDGE:
+        return (
+            "Contrast intensity with a controlled narrative breather.",
+            "Wider visual reset before final flourish.",
+            "medium",
+        )
+    return (
+        "Land clean aftermath and closing hero frame.",
+        "Closing reaction hold letting the track fade cleanly.",
+        "hero_payoff",
+    )
+
+
 class MockBackend:
     """Deterministic beat- and energy-matched planner requiring no LLM."""
+
+    def generate_script(
+        self,
+        audio: AudioAnalysis,
+        catalog: ShotCatalog,
+        vibe: str,
+    ) -> EditScript:
+        """Build a deterministic multi-beat `EditScript` from song sections."""
+        _, win_sections = shift_audio_to_window(audio)
+        win_dur = audio.selected_window_end_ms - audio.selected_window_start_ms
+        allow_sfx = catalog.has_audio and not _wants_pure_music(vibe)
+        beats: list[ScriptBeat] = []
+        raw_spans = (
+            [(s.start_ms, s.end_ms, s.label) for s in win_sections]
+            if win_sections
+            else [(0, win_dur, SectionLabel.DROP)]
+        )
+        for idx, (s_start, s_end, label) in enumerate(raw_spans[:6], start=1):
+            end_val = win_dur if idx == min(len(raw_spans), 6) else s_end
+            goal, direction, pacing = _beat_goal(label, vibe)
+            beats.append(
+                ScriptBeat(
+                    beat_index=idx,
+                    section=label,
+                    dst_start_ms=s_start,
+                    dst_end_ms=max(s_start + 1, end_val),
+                    story_goal=goal,
+                    visual_direction=direction,
+                    pacing_style=pacing,
+                    preferred_tags=(
+                        ["high_motion", "closeup"]
+                        if label == SectionLabel.DROP
+                        else ["closeup", "wide"]
+                    ),
+                    use_sfx=allow_sfx
+                    and label
+                    in (
+                        SectionLabel.INTRO,
+                        SectionLabel.BUILDUP,
+                        SectionLabel.BRIDGE,
+                    ),
+                )
+            )
+        return EditScript(
+            logline=f"Rhythm-driven narrative cut tailored for '{vibe}'.",
+            arc_summary="Setup tension -> buildup play -> peak drop payoff.",
+            recommended_aspect=_aspect_from_vibe(vibe, catalog),
+            recommended_grade=_grade_from_vibe(vibe),
+            beats=beats,
+        )
 
     def generate_draft(
         self,
         audio: AudioAnalysis,
         catalog: ShotCatalog,
         vibe: str,
+        *,
+        script: EditScript | None = None,
     ) -> EditTimelineDraft:
         """Pair song section energy with shot motion/sharpness on beats."""
+        active_script = script or self.generate_script(audio, catalog, vibe)
         win_beats, win_sections = shift_audio_to_window(audio)
         win_dur = audio.selected_window_end_ms - audio.selected_window_start_ms
         max_shot_dur = max(s.end_ms - s.start_ms for s in catalog.shots)
@@ -196,9 +309,18 @@ class MockBackend:
                 SectionLabel.BRIDGE,
             )
             any_sfx = any_sfx or clip_sfx
+            beat_match = next(
+                (
+                    b.beat_index
+                    for b in active_script.beats
+                    if b.dst_start_ms <= mid <= b.dst_end_ms
+                ),
+                active_script.beats[-1].beat_index,
+            )
             clips.append(
                 TimelineClipDraft(
                     shot_id=shot.shot_id,
+                    script_beat_index=beat_match,
                     src_start_ms=shot.start_ms,
                     src_end_ms=shot.start_ms + max(1, src_dur),
                     dst_start_ms=dst_s,
@@ -212,8 +334,9 @@ class MockBackend:
                 )
             )
         return EditTimelineDraft(
+            script=active_script,
             clips=clips,
-            recommended_grade=_grade_from_vibe(vibe),
+            recommended_grade=active_script.recommended_grade,
             recommended_sfx_mix=0.22 if any_sfx else 0.0,
         )
 

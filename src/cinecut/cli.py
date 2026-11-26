@@ -45,6 +45,7 @@ from cinecut.planner import PlannerError, solve_timeline
 from cinecut.schemas import (
     AspectPreset,
     AudioAnalysis,
+    EditScript,
     EditTimeline,
     EngineType,
     FramingMode,
@@ -101,6 +102,50 @@ def _parse_sfx_mix(raw_value: str) -> float | Literal["auto"]:
             "sfx-mix must be 'auto' or a float in [0.0, 1.0]."
         )
     return parsed
+
+
+def _load_or_build_script(
+    backend: AIBackend,
+    audio_analysis: AudioAnalysis,
+    catalog: ShotCatalog,
+    vibe: str,
+    *,
+    script_path: Path | None,
+    two_pass: bool,
+) -> EditScript | None:
+    """Load an explicit `--script` JSON or run Stage-1 scriptwriting."""
+    if script_path is not None:
+        return EditScript.model_validate_json(
+            script_path.read_text(encoding="utf-8")
+        )
+    if two_pass:
+        return backend.generate_script(audio_analysis, catalog, vibe)
+    return None
+
+
+def _print_edit_script(script_obj: EditScript, target: Console) -> None:
+    """Render a compact narrative `EditScript` summary table."""
+    target.print(f"[cyan]Script logline:[/cyan] {script_obj.logline}")
+    target.print(
+        f"[dim]Arc: {script_obj.arc_summary} | "
+        f"aspect={script_obj.recommended_aspect.value} | "
+        f"grade={script_obj.recommended_grade.value}[/dim]"
+    )
+    table = Table(title="cinecut narrative script")
+    table.add_column("#")
+    table.add_column("Span (ms)")
+    table.add_column("Section")
+    table.add_column("Pacing")
+    table.add_column("Story Goal")
+    for beat in script_obj.beats:
+        table.add_row(
+            str(beat.beat_index),
+            f"{beat.dst_start_ms}-{beat.dst_end_ms}",
+            beat.section.value,
+            beat.pacing_style,
+            beat.story_goal,
+        )
+    target.print(table)
 
 
 @app.callback()
@@ -300,6 +345,79 @@ def recommend(
 
 
 @app.command()
+def script(
+    video: Annotated[str, typer.Option("--video", help="Video file or URL.")],
+    audio: Annotated[str, typer.Option("--audio", help="Audio file or URL.")],
+    vibe: Annotated[str, typer.Option("--vibe", help="Director intent.")],
+    engine: Annotated[EngineType, typer.Option("--engine")] = EngineType.GEMINI,
+    stems: Annotated[bool, typer.Option("--stems")] = False,
+    audio_start: Annotated[float | None, typer.Option("--audio-start")] = None,
+    duration: Annotated[float, typer.Option("--duration", min=0.25)] = 45.0,
+    full_audio: Annotated[bool, typer.Option("--full-audio")] = False,
+    cache_dir: Annotated[Path, typer.Option("--cache-dir")] = Path(
+        ".cinecut_cache"
+    ),
+    no_cache: Annotated[bool, typer.Option("--no-cache")] = False,
+    out: Annotated[Path, typer.Option("--out")] = Path("edit_script.json"),
+    gemini_model: Annotated[
+        str, typer.Option("--gemini-model")
+    ] = "gemini-3.8-flash",
+    local_url: Annotated[
+        str, typer.Option("--local-url")
+    ] = "http://127.0.0.1:11434",
+    local_model: Annotated[str, typer.Option("--local-model")] = "gemma4:e4b",
+    json_out: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Write a narrative EditScript storyboard before directing cuts."""
+    try:
+        raw_video = resolve_media_source(video, cache_dir, kind="video")
+        raw_audio = resolve_media_source(audio, cache_dir, kind="audio")
+        render_video, media_info = prepare_video(
+            raw_video, cache_dir, use_cache=not no_cache
+        )
+        raw_info = (
+            media_info if render_video == raw_video else probe_media(raw_video)
+        )
+        wav_path = prepare_audio(raw_audio, cache_dir, use_cache=not no_cache)
+        audio_analysis = analyze_audio(
+            wav_path,
+            target_duration_ms=round(duration * 1000),
+            audio_start_ms=(
+                round(audio_start * 1000) if audio_start is not None else None
+            ),
+            full_audio=full_audio,
+            use_stems=stems,
+        )
+        catalog = index_video_shots(
+            render_video,
+            media_info.fps,
+            cache_dir,
+            has_audio=raw_info.has_audio,
+            use_cache=not no_cache,
+        )
+    except (FileNotFoundError, IngestError, MissingExtraError) as exc:
+        typer.echo(f"Ingest/analysis error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    try:
+        backend = _build_backend(engine, local_url, local_model, gemini_model)
+        edit_script = backend.generate_script(audio_analysis, catalog, vibe)
+    except AIBackendError as exc:
+        typer.echo(f"Script error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        edit_script.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+    if json_out:
+        typer.echo(edit_script.model_dump_json(indent=2))
+        return
+    _print_edit_script(edit_script, console)
+    console.print(f"[green]Saved[/green] {out}")
+
+
+@app.command()
 def plan(
     audio_json: Annotated[Path, typer.Option("--audio-json")],
     shots_json: Annotated[Path, typer.Option("--shots-json")],
@@ -325,6 +443,16 @@ def plan(
         str, typer.Option("--local-url")
     ] = "http://127.0.0.1:11434",
     local_model: Annotated[str, typer.Option("--local-model")] = "gemma4:e4b",
+    script_in: Annotated[
+        Path | None,
+        typer.Option("--script", help="Optional EditScript JSON to follow."),
+    ] = None,
+    two_pass: Annotated[
+        bool,
+        typer.Option(
+            "--two-pass", help="Split Scriptwriter and Director calls."
+        ),
+    ] = False,
     out_json: Annotated[Path, typer.Option("--out-json")] = Path(
         "timeline.json"
     ),
@@ -341,21 +469,39 @@ def plan(
         )
         if catalog.active_crop is not None:
             src_w, src_h = catalog.active_crop.w, catalog.active_crop.h
-        elif aspect == AspectPreset.AUTO or framing == FramingMode.AUTO:
+        elif (
+            aspect in (AspectPreset.AUTO, AspectPreset.NATIVE)
+            or framing == FramingMode.AUTO
+        ):
             src_info = probe_media(render_video)
             src_w, src_h = src_info.width, src_info.height
         else:
             src_w, src_h = 16, 9
-        width, height, resolved_framing = resolve_output_spec(
-            aspect, framing, src_w, src_h
-        )
     except (OSError, ValidationError, ValueError, IngestError) as exc:
         typer.echo(f"Input error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     try:
         backend = _build_backend(engine, local_url, local_model, gemini_model)
-        draft = backend.generate_draft(audio_analysis, catalog, vibe)
+        loaded_script = _load_or_build_script(
+            backend,
+            audio_analysis,
+            catalog,
+            vibe,
+            script_path=script_in,
+            two_pass=two_pass,
+        )
+        draft = backend.generate_draft(
+            audio_analysis, catalog, vibe, script=loaded_script
+        )
+        ai_aspect = (
+            draft.script.recommended_aspect
+            if draft.script is not None
+            else None
+        )
+        width, height, resolved_framing = resolve_output_spec(
+            aspect, framing, src_w, src_h, ai_aspect=ai_aspect
+        )
         timeline = solve_timeline(
             draft,
             audio_analysis,
@@ -371,7 +517,7 @@ def plan(
             sfx_audio_path=sfx_wav,
             sfx_mix=parsed_sfx_mix,
         )
-    except (AIBackendError, PlannerError) as exc:
+    except (OSError, ValidationError, AIBackendError, PlannerError) as exc:
         typer.echo(f"Planning error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
 
@@ -469,6 +615,16 @@ def edit(
         str, typer.Option("--local-url")
     ] = "http://127.0.0.1:11434",
     local_model: Annotated[str, typer.Option("--local-model")] = "gemma4:e4b",
+    script_in: Annotated[
+        Path | None,
+        typer.Option("--script", help="Optional EditScript JSON to follow."),
+    ] = None,
+    two_pass: Annotated[
+        bool,
+        typer.Option(
+            "--two-pass", help="Split Scriptwriter and Director calls."
+        ),
+    ] = False,
     json_out: Annotated[bool, typer.Option("--json")] = False,
     quiet: Annotated[bool, typer.Option("--quiet")] = False,
     verbose: Annotated[bool, typer.Option("--verbose")] = False,
@@ -549,15 +705,16 @@ def edit(
                 if catalog.active_crop is not None
                 else media_info.height
             )
-            width, height, resolved_framing = resolve_output_spec(
-                aspect, framing, src_w, src_h
-            )
             if verbose and not quiet and not json_out:
                 err_console.print(
                     f"[dim][cinecut] BPM={audio_analysis.bpm:.1f}, "
                     f"shots={len(catalog.shots)}, proxy={render_video}[/dim]"
                 )
-        except (FileNotFoundError, IngestError, MissingExtraError) as exc:
+        except (
+            FileNotFoundError,
+            IngestError,
+            MissingExtraError,
+        ) as exc:
             progress.stop()
             typer.echo(f"Ingest/analysis error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
@@ -571,7 +728,25 @@ def edit(
             backend = _build_backend(
                 engine, local_url, local_model, gemini_model
             )
-            draft = backend.generate_draft(audio_analysis, catalog, vibe)
+            loaded_script = _load_or_build_script(
+                backend,
+                audio_analysis,
+                catalog,
+                vibe,
+                script_path=script_in,
+                two_pass=two_pass,
+            )
+            draft = backend.generate_draft(
+                audio_analysis, catalog, vibe, script=loaded_script
+            )
+            ai_aspect = (
+                draft.script.recommended_aspect
+                if draft.script is not None
+                else None
+            )
+            width, height, resolved_framing = resolve_output_spec(
+                aspect, framing, src_w, src_h, ai_aspect=ai_aspect
+            )
             progress.update(
                 task_id, advance=1, description="Solving timeline & A/V sync..."
             )
@@ -590,12 +765,24 @@ def edit(
                 sfx_audio_path=sfx_wav,
                 sfx_mix=parsed_sfx_mix,
             )
-        except (AIBackendError, PlannerError) as exc:
+        except (
+            OSError,
+            ValidationError,
+            AIBackendError,
+            PlannerError,
+        ) as exc:
             progress.stop()
             typer.echo(f"Planning error: {exc}", err=True)
             raise typer.Exit(code=2) from exc
 
         cache_dir.mkdir(parents=True, exist_ok=True)
+        script_json_path: Path | None = None
+        if timeline.script is not None:
+            script_json_path = cache_dir / "script.json"
+            script_json_path.write_text(
+                timeline.script.model_dump_json(indent=2) + "\n",
+                encoding="utf-8",
+            )
         timeline_json = cache_dir / "timeline.json"
         timeline_json.write_text(
             timeline.model_dump_json(indent=2) + "\n", encoding="utf-8"
@@ -628,6 +815,9 @@ def edit(
                     "mp4": str(out),
                     "otio": str(otio_path),
                     "timeline_json": str(timeline_json),
+                    "script_json": (
+                        str(script_json_path) if script_json_path else None
+                    ),
                     "clips": len(timeline.clips),
                     "duration_ms": timeline.audio_duration_ms,
                     "width": width,
@@ -641,6 +831,8 @@ def edit(
             )
         )
     elif not quiet:
+        if timeline.script is not None:
+            _print_edit_script(timeline.script, console)
         console.print(
             f"[green]Rendered[/green] {out} ({len(timeline.clips)} clips, "
             f"{timeline.audio_duration_ms}ms) + {otio_path}"

@@ -5,14 +5,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Python 3.11–3.13](https://img.shields.io/badge/python-3.11%E2%80%933.13-blue.svg)](./pyproject.toml)
 
-`cinecut` is an open-source Python CLI that turns raw sports, film, anime, or motorsport footage and a music track into a cinematic edit (`4:5`, `4:3`, `16:9`, or `9:16`) driven by a `--vibe` director-intent prompt. Unlike mechanical beat-onset cutters or speech-to-text podcast clippers, `cinecut` pairs musical structure (buildups, drops, downbeats, and optional stem energy) with shot motion/framing analysis, color-grading presets, selective original-audio SFX mixing, and AI song recommendations—validating every cut deterministically before rendering via FFmpeg and exporting an editable OpenTimelineIO (`.otio`) rough cut.
+`cinecut` is an open-source Python CLI that turns raw sports, film, anime, or motorsport footage and a music track into a cinematic edit (`native`, `4:5`, `4:3`, `16:9`, or `9:16` full-screen Reels) driven by a `--vibe` director-intent prompt. Unlike mechanical beat-onset cutters or speech-to-text podcast clippers, `cinecut` pairs musical structure (buildups, drops, downbeats, and optional stem energy) with shot motion/subject pan-tracking analysis, Script-then-Direct narrative planning, color-grading presets, selective original-audio SFX mixing, and AI song recommendations—validating every cut deterministically before rendering via FFmpeg and exporting an editable OpenTimelineIO (`.otio`) rough cut.
 
 ---
 
 ## Why `cinecut`?
 
-- **Story & Dynamic Pacing Across Genres:** Holds longer atmospheric shots (`3–10s`) during setups/buildups and snaps into high-motion beat-synced `zoom_punch` / `flash` cuts at the drop across sports, film, anime, and motorsports.
-- **Auto Letterbox Strip, Mobile-First Framing & Smart SFX (`auto` defaults):** Strips baked-in `2.39:1` cinema black bars, automatically selects full-bleed `4:3` (`1440x1080`) for standard landscape footage (`blur` fallback on ultra-wide sources, `9:16` for portrait) or honors `--aspect` / `--framing`, applies AI-chosen `--grade auto|moody|warm|crisp|none`, and lets `--sfx-mix auto` blend original sound only when it elevates the cut.
+- **Scriptwriter -> Director Narrative Planning:** Plans an `EditScript` storyboard (setup -> escalation -> peak -> aftermath) before casting clips (`cinecut script`, `--script`, or `--two-pass`), letting plays breathe (`2.0–6.5s` hero buildup holds) and snapping tight beat-locked cuts (`0.45–1.2s`) with `zoom_punch`/`flash` on drops.
+- **Auto Letterbox Strip, Dynamic Action Pan & Flexible Framing (`auto` defaults):** Strips baked-in `2.39:1` cinema black bars, preserves `native` geometry without forcing `4:3` or selects full-screen `9:16` with smooth per-frame FFmpeg subject pan-tracking for Reels, applies AI-chosen `--grade auto|moody|warm|crisp|none`, and lets `--sfx-mix auto` blend original sound only when it elevates the cut.
 - **Hook-Smart Audio & Visual Context:** Multi-band chorus/drop detection anchors auto windows on `buildup -> hook` transitions, while OpenCV pre-filtering skips stat cards/dark transitions and feeds labeled `48`-shot contact-sheet grids to Gemini/Gemma.
 - **AI Song Recommender (`cinecut recommend`):** Analyzes any `--video` + `--vibe` to suggest 5 tracks with target BPM and ready-to-run `ytsearch1:` audio queries (`--audio "ytsearch1:..."`).
 - **Dual AI Engine (`--engine gemini` / `--engine gemma`):** Use Google Gemini (`google-genai`) in the cloud or run 100% offline/copyright-safe with multimodal Gemma via local Ollama (`127.0.0.1:11434`). Includes `--engine mock` for deterministic dry runs and CI.
@@ -154,10 +154,11 @@ cinecut render --timeline-json ./work/timeline.json --out edit.mp4 --otio edit.o
 
 | Command | Purpose |
 | :--- | :--- |
-| `cinecut edit` | Run full end-to-end pipeline (`--aspect auto\|4:5\|4:3\|16:9\|9:16`, `--grade auto\|moody\|warm\|crisp\|none`, `--sfx-mix auto\|0.0-1.0`). |
+| `cinecut edit` | Run full end-to-end pipeline (`--aspect auto\|native\|4:5\|4:3\|16:9\|9:16`, `--grade auto\|moody\|warm\|crisp\|none`, `--script`, `--two-pass`). |
+| `cinecut script` | Write & inspect the narrative `EditScript` storyboard (`edit_script.json`) before directing cuts. |
 | `cinecut recommend` | Analyze video tempo/motion + `--vibe` and recommend 5 fitting tracks with BPM & `ytsearch1:` queries. |
 | `cinecut analyze` | Probe/normalize media, extract beat grid & sections, extract optional `sfx.wav`, index shots, and save JSONs. |
-| `cinecut plan` | Run `--engine gemini\|gemma\|mock` + deterministic sync solver to produce `timeline.json`. |
+| `cinecut plan` | Run `--engine gemini\|gemma\|mock` + deterministic sync solver (`--script` / `--two-pass`) to produce `timeline.json`. |
 | `cinecut render` | Render target-aspect MP4 via `-filter_complex_script` (or `--dry-run-ffmpeg`) and export `.otio`. |
 | `cinecut doctor` | Check `ffmpeg`, `ffprobe`, optional extras, `GEMINI_API_KEY`, and local Gemma server health. |
 

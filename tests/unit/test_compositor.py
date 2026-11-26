@@ -199,3 +199,18 @@ def test_filtergraph_aspects_grades_and_selective_sfx(tmp_path: Path) -> None:
     )
     script_cropped = build_filter_complex_script(tl_cropped)
     assert "scale=iw*sar:ih,setsar=1,crop=1920:804:0:138," in script_cropped
+
+    tl_pan = tl_warm.model_copy(
+        update={
+            "width": 1080,
+            "height": 1920,
+            "clips": [
+                tl_warm.clips[0].model_copy(
+                    update={"crop_x_norm": 0.2, "crop_x_end_norm": 0.8}
+                ),
+                tl_warm.clips[1],
+            ],
+        }
+    )
+    script_pan = build_filter_complex_script(tl_pan)
+    assert "min(1\\,t/1.0000)" in script_pan

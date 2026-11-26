@@ -11,7 +11,12 @@ import numpy as np
 import numpy.typing as npt
 
 from cinecut.planner.solver import shift_audio_to_window
-from cinecut.schemas import AudioAnalysis, ShotCatalog, ShotMetadata
+from cinecut.schemas import (
+    AudioAnalysis,
+    EditScript,
+    ShotCatalog,
+    ShotMetadata,
+)
 
 
 def select_representative_shots(
@@ -177,19 +182,25 @@ def stitch_keyframe_strip(keyframe_paths: list[str]) -> bytes | None:
     return bytes(buf.tobytes())
 
 
-def build_editing_prompt(
+def _build_planning_payload(
     audio: AudioAnalysis, catalog: ShotCatalog, vibe: str
-) -> str:
-    """Build a compact structured prompt with window-shifted audio & shots."""
+) -> dict[str, object]:
+    """Assemble compact audio/shot context shared by script & edit prompts."""
     win_beats, win_sections = shift_audio_to_window(audio)
     win_dur = audio.selected_window_end_ms - audio.selected_window_start_ms
     candidate_shots = select_representative_shots(catalog.shots, limit=80)
-    payload = {
+    crop_aspect = (
+        round(catalog.active_crop.w / float(catalog.active_crop.h), 2)
+        if catalog.active_crop is not None
+        else None
+    )
+    return {
         "vibe": vibe,
         "window_duration_ms": win_dur,
         "min_clips_hint": max(4, win_dur // 3500),
         "bpm": round(audio.bpm, 1),
         "has_video_audio": catalog.has_audio,
+        "active_crop_aspect": crop_aspect,
         "beats_ms": win_beats,
         "sections": [sec.model_dump(mode="json") for sec in win_sections],
         "shots": [
@@ -207,29 +218,73 @@ def build_editing_prompt(
             for s in candidate_shots
         ],
     }
+
+
+def build_script_prompt(
+    audio: AudioAnalysis, catalog: ShotCatalog, vibe: str
+) -> str:
+    """Build Stage-1 prompt asking the AI Scriptwriter for an `EditScript`."""
+    payload = _build_planning_payload(audio, catalog, vibe)
     return (
-        "You are a multi-genre cinematic editor (sports, film, anime, motors). "
-        "Create an EditTimelineDraft where dst_start_ms/dst_end_ms are "
-        "window-relative [0, window_duration_ms] contiguously (clip[0] starts "
-        "at 0 and the FINAL clip ends cleanly at window_duration_ms; emit "
-        "enough clips >= min_clips_hint so no single clip exceeds 4 * shot "
-        "duration or 8000ms). src_start_ms/src_end_ms stay within each shot's "
-        "[start_ms, end_ms]. Labeled 4x4 contact sheets show keyframes across "
-        "the video. Prefer 'closeup' (high face_ratio), 'high_motion' action, "
-        "and clean atmospheric shots; NEVER pick 'low_quality' shots or high "
-        "text_clutter stat-cards/interviews/subtitles. Pace dynamically: use "
-        "longer atmospheric holds (3s-8s, speed 0.65-1.0) during setup/buildup "
-        "when long shots exist, contrasting with tight beat-locked cuts "
-        "(0.45s-1.2s) with zoom_punch/flash + expressive close-up payoffs on "
-        "drop/climax. Cut on beats_ms. Set recommended_grade ('moody', 'warm', "
-        "or 'crisp') to fit both the vibe and footage colors. If "
-        "has_video_audio is false, set use_sfx=false on every clip and "
-        "recommended_sfx_mix=0.0. If has_video_audio is true, enable "
-        "use_sfx=true ONLY on clips where original sound elevates impact "
-        "(engine roar, crowd cheer, whistle, dialogue pause) and keep "
-        "use_sfx=false on rapid drop cuts or pure-music/AMV edits; set "
-        "recommended_sfx_mix in 0.15-0.35 when use_sfx clips exist, else 0.0. "
-        "Input context:\n" + json.dumps(payload, indent=2)
+        "You are a film & reel scriptwriter planning an edit before cutting. "
+        "Inspect the labeled 4x4 contact sheets, musical sections, and vibe, "
+        "and produce an EditScript spanning [0, window_duration_ms] in 3-6 "
+        "contiguous ScriptBeat chapters (setup -> escalation -> payoff -> "
+        "release). For each beat give section, dst_start_ms, dst_end_ms, "
+        "story_goal referencing real subjects visible in the frames, "
+        "visual_direction, pacing_style ('hold', 'build', 'rapid', or "
+        "'hero_payoff'), preferred_tags ('closeup', 'high_motion', 'wide'), "
+        "and use_sfx. Pick recommended_aspect ('9:16' for reels/sports "
+        "action highlights or vertical footage; 'native' or '16:9' for wide "
+        "cinema/landscape compositions) and recommended_grade ('moody', "
+        "'warm', or 'crisp'). Context:\n" + json.dumps(payload, indent=2)
+    )
+
+
+def build_editing_prompt(
+    audio: AudioAnalysis,
+    catalog: ShotCatalog,
+    vibe: str,
+    *,
+    script: EditScript | None = None,
+) -> str:
+    """Build Director prompt with optional external or co-authored Script."""
+    payload = _build_planning_payload(audio, catalog, vibe)
+    if script is not None:
+        payload["director_script"] = script.model_dump(mode="json")
+        script_instruction = (
+            "A narrative EditScript is provided in director_script: follow "
+            "each beat's story_goal, visual_direction, pacing_style, and "
+            "time span faithfully, setting script_beat_index on every clip. "
+        )
+    else:
+        script_instruction = (
+            "TWO-STAGE REASONING IN ONE PASS: populate the `script` field "
+            "FIRST (logline, arc_summary, recommended_aspect, "
+            "recommended_grade, and 3-6 contiguous beats aligned to "
+            "sections[]), THEN cast `clips` to fulfill each beat (setting "
+            "script_beat_index on every clip). "
+            "Choose recommended_aspect ('9:16' for mobile sports/action reels; "
+            "'native' or '16:9' for wide cinema/landscape storytelling). "
+        )
+    return (
+        "You are a multi-genre cinematic director & editor (sports, film, "
+        "anime, motors). " + script_instruction + "Create an EditTimelineDraft "
+        "where dst_start_ms/dst_end_ms cover [0, window_duration_ms] "
+        "contiguously (clip[0] starts at 0 and the FINAL clip ends at "
+        "window_duration_ms; emit enough clips >= min_clips_hint so no single "
+        "clip exceeds 4 * shot duration or 8000ms). src_start_ms/src_end_ms "
+        "stay within each shot's [start_ms, end_ms]. Labeled 4x4 contact "
+        "sheets show keyframes across the video. Prefer 'closeup' (high "
+        "face_ratio), 'high_motion' action, and clean atmospheric shots; "
+        "NEVER pick 'low_quality' shots or high text_clutter overlays. Let "
+        "hero plays breathe (2.0s-6.5s complete action during buildup/payoff) "
+        "and contrast with tight beat-locked cuts (0.45s-1.2s) + zoom_punch/"
+        "flash on drops. Cut on beats_ms. Set recommended_grade ('moody', "
+        "'warm', or 'crisp'). If has_video_audio is false, set use_sfx=false "
+        "everywhere and recommended_sfx_mix=0.0. If true, set use_sfx=true "
+        "ONLY where natural audio elevates impact (0.15-0.35 mix). Context:\n"
+        + json.dumps(payload, indent=2)
     )
 
 

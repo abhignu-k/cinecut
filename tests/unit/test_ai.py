@@ -17,10 +17,13 @@ from cinecut.ai.prompts import (
     stitch_keyframe_strip,
 )
 from cinecut.schemas import (
+    AspectPreset,
     AudioAnalysis,
+    EditScript,
     EditTimelineDraft,
     GradePreset,
     RationalFPS,
+    ScriptBeat,
     SectionLabel,
     ShotCatalog,
     ShotMetadata,
@@ -105,6 +108,7 @@ def test_gemini_response_schema_is_sdk_compatible() -> None:
     from google.genai import _transformers as t
 
     client = Client(api_key="dummy-key")
+    assert t.t_schema(client._api_client, EditScript) is not None
     schema = t.t_schema(client._api_client, EditTimelineDraft)
     assert schema is not None
 
@@ -310,3 +314,60 @@ def test_contact_sheets_and_mock_filters_low_quality(
     )
     draft = MockBackend().generate_draft(audio, cat, "moody edit")
     assert all(c.shot_id != "shot_0005" for c in draft.clips)
+    assert draft.script is not None
+    assert draft.clips[0].script_beat_index is not None
+
+    reel_script = MockBackend().generate_script(audio, cat, "football reel")
+    assert reel_script.recommended_aspect == AspectPreset.VERTICAL_9_16
+    cinema_script = MockBackend().generate_script(audio, cat, "cinema film")
+    assert cinema_script.recommended_aspect == AspectPreset.AUTO
+
+    gem_script = EditScript(
+        logline="Build from calm tension into stadium roar.",
+        arc_summary="Setup -> drop payoff.",
+        recommended_aspect=AspectPreset.VERTICAL_9_16,
+        recommended_grade=GradePreset.WARM,
+        beats=[
+            ScriptBeat(
+                beat_index=1,
+                section=SectionLabel.BUILDUP,
+                dst_start_ms=0,
+                dst_end_ms=2000,
+                story_goal="Establish athlete",
+                visual_direction="Hold closeup",
+            ),
+            ScriptBeat(
+                beat_index=2,
+                section=SectionLabel.DROP,
+                dst_start_ms=2000,
+                dst_end_ms=4000,
+                story_goal="Release kinetic action",
+                visual_direction="Beat cut montage",
+            ),
+        ],
+    )
+
+    class ScriptModels:
+        def generate_content(self, **kwargs: object) -> object:
+            return SimpleNamespace(text=gem_script.model_dump_json())
+
+    gem = GeminiBackend(client=SimpleNamespace(models=ScriptModels()))
+    out_script = gem.generate_script(audio, cat, "football reel")
+    assert out_script.recommended_aspect == AspectPreset.VERTICAL_9_16
+
+    def gemma_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"message": {"content": gem_script.model_dump_json()}},
+        )
+
+    ol = GemmaBackend(
+        client=httpx.Client(transport=httpx.MockTransport(gemma_handler))
+    )
+    out_gemma_script = ol.generate_script(audio, cat, "football reel")
+    assert len(out_gemma_script.beats) == 2
+
+    two_pass_draft = MockBackend().generate_draft(
+        audio, cat, "football reel", script=out_script
+    )
+    assert two_pass_draft.script == out_script

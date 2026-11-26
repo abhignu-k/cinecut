@@ -8,6 +8,7 @@ from cinecut.schemas import (
     AspectPreset,
     AudioAnalysis,
     CropRect,
+    EditScript,
     EditTimeline,
     EditTimelineDraft,
     EffectType,
@@ -18,6 +19,7 @@ from cinecut.schemas import (
     NarrativeRole,
     ProjectConfig,
     RationalFPS,
+    ScriptBeat,
     SectionLabel,
     ShotCatalog,
     ShotMetadata,
@@ -243,7 +245,7 @@ def test_edit_timeline_and_draft_validation() -> None:
 
 def test_export_json_schemas(tmp_path: Path) -> None:
     exported = export_json_schemas(tmp_path)
-    assert len(exported) == 7
+    assert len(exported) == 8
     for path in exported:
         assert path.exists()
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -251,13 +253,24 @@ def test_export_json_schemas(tmp_path: Path) -> None:
 
 
 def test_resolve_dimensions_and_v02_schemas() -> None:
-    assert resolve_dimensions(AspectPreset.AUTO, 1920, 1080) == (1440, 1080)
+    assert resolve_dimensions(AspectPreset.AUTO, 1920, 1080) == (1920, 1080)
     assert resolve_dimensions(AspectPreset.AUTO, 1080, 1920) == (1080, 1920)
+    assert resolve_dimensions(AspectPreset.NATIVE, 3840, 1608) == (1920, 804)
     assert resolve_output_spec(
         AspectPreset.AUTO, FramingMode.AUTO, 1920, 1080
-    ) == (1440, 1080, FramingMode.CROP)
+    ) == (1920, 1080, FramingMode.CROP)
+    assert resolve_output_spec(
+        AspectPreset.AUTO,
+        FramingMode.AUTO,
+        1920,
+        1080,
+        ai_aspect=AspectPreset.VERTICAL_9_16,
+    ) == (1080, 1920, FramingMode.CROP)
     assert resolve_output_spec(
         AspectPreset.AUTO, FramingMode.AUTO, 1920, 804
+    ) == (1920, 804, FramingMode.CROP)
+    assert resolve_output_spec(
+        AspectPreset.CLASSIC_4_3, FramingMode.AUTO, 1920, 804
     ) == (1440, 1080, FramingMode.BLUR)
     assert resolve_output_spec(
         AspectPreset.AUTO, FramingMode.AUTO, 1080, 1920
@@ -299,7 +312,17 @@ def test_resolve_dimensions_and_v02_schemas() -> None:
 
     client = Client(api_key="dummy-key")
     assert t.t_schema(client._api_client, SongRecommendationList) is not None
+    assert t.t_schema(client._api_client, EditScript) is not None
     assert t.t_schema(client._api_client, EditTimelineDraft) is not None
+    beat = ScriptBeat(
+        beat_index=1,
+        section=SectionLabel.BUILDUP,
+        dst_start_ms=0,
+        dst_end_ms=2000,
+        story_goal="Establish lead runner",
+        visual_direction="Hold panning profile shot",
+    )
+    assert beat.beat_index == 1
 
     with pytest.raises(ValidationError):
         EditTimeline(

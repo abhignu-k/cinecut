@@ -135,6 +135,8 @@ def index_video_shots(
                     motion_score=profile.motion_score,
                     sharpness_score=profile.sharpness_score,
                     crop_x_norm=profile.crop_x_norm,
+                    crop_x_start=profile.crop_x_start,
+                    crop_x_end=profile.crop_x_end,
                     face_ratio=profile.face_ratio,
                     text_clutter_score=profile.text_clutter_score,
                     is_dark_or_flat=profile.is_dark_or_flat,

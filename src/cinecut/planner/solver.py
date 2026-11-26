@@ -22,11 +22,32 @@ from cinecut.schemas import (
     TimelineClip,
     TimelineClipDraft,
     TransitionType,
+    resolve_framing_mode,
 )
 
 
 class PlannerError(RuntimeError):
     """Raised when an AI timeline draft cannot satisfy sync invariants."""
+
+
+def _interpolate_crop_pan(
+    shot: ShotMetadata, src_start: int, src_end: int
+) -> tuple[float, float | None]:
+    """Interpolate clip `(crop_x_start, crop_x_end)` inside `shot`."""
+    s0 = (
+        shot.crop_x_start if shot.crop_x_start is not None else shot.crop_x_norm
+    )
+    s1 = shot.crop_x_end if shot.crop_x_end is not None else shot.crop_x_norm
+    if abs(s1 - s0) < 0.02:
+        return round(shot.crop_x_norm, 4), None
+    shot_dur = max(1, shot.end_ms - shot.start_ms)
+    t0 = max(0.0, min(1.0, (src_start - shot.start_ms) / shot_dur))
+    t1 = max(t0, min(1.0, (src_end - shot.start_ms) / shot_dur))
+    x0 = max(0.0, min(1.0, s0 + (s1 - s0) * t0))
+    x1 = max(0.0, min(1.0, s0 + (s1 - s0) * t1))
+    if abs(x1 - x0) < 0.02:
+        return round((x0 + x1) / 2.0, 4), None
+    return round(x0, 4), round(x1, 4)
 
 
 def shift_audio_to_window(
@@ -212,6 +233,7 @@ def _append_tail_clips(
         src_start, src_end, exact_speed = _fit_source_span(
             synth_draft, shot, dst_dur
         )
+        c_start, c_end = _interpolate_crop_pan(shot, src_start, src_end)
         solved_clips.append(
             TimelineClip(
                 shot_id=shot.shot_id,
@@ -220,7 +242,8 @@ def _append_tail_clips(
                 dst_start_ms=cur_dst,
                 dst_end_ms=dst_end,
                 speed=exact_speed,
-                crop_x_norm=shot.crop_x_norm,
+                crop_x_norm=c_start,
+                crop_x_end_norm=c_end,
                 transition=(
                     TransitionType.FLASH
                     if is_drop and len(solved_clips) % 4 == 0
@@ -289,16 +312,11 @@ def solve_timeline(
     if not isinstance(sfx_mix, str) and not (0.0 <= sfx_mix <= 1.0):
         raise PlannerError("sfx_mix must be between 0.0 and 1.0 or 'auto'.")
 
-    resolved_framing = framing
-    if resolved_framing == FramingMode.AUTO:
-        ref_w = catalog.active_crop.w if catalog.active_crop else width
-        ref_h = catalog.active_crop.h if catalog.active_crop else height
-        src_ratio = ref_w / float(max(1, ref_h))
-        tgt_ratio = width / float(max(1, height))
-        crop_loss = max(src_ratio / tgt_ratio, tgt_ratio / src_ratio)
-        resolved_framing = (
-            FramingMode.CROP if crop_loss <= 1.45 else FramingMode.BLUR
-        )
+    ref_w = catalog.active_crop.w if catalog.active_crop else width
+    ref_h = catalog.active_crop.h if catalog.active_crop else height
+    resolved_framing = resolve_framing_mode(
+        framing, ref_w, ref_h, width, height
+    )
 
     resolved_grade = grade
     if resolved_grade == GradePreset.AUTO:
@@ -394,6 +412,7 @@ def solve_timeline(
         src_start, src_end, exact_speed = _fit_source_span(
             clip_draft, shot, dst_dur
         )
+        c_start, c_end = _interpolate_crop_pan(shot, src_start, src_end)
         solved_clips.append(
             TimelineClip(
                 shot_id=shot.shot_id,
@@ -402,7 +421,8 @@ def solve_timeline(
                 dst_start_ms=cur_dst,
                 dst_end_ms=dst_end,
                 speed=exact_speed,
-                crop_x_norm=shot.crop_x_norm,
+                crop_x_norm=c_start,
+                crop_x_end_norm=c_end,
                 transition=clip_draft.transition,
                 effect=clip_draft.effect,
                 narrative_role=clip_draft.narrative_role,
@@ -457,5 +477,6 @@ def solve_timeline(
         sfx_mix=max_sfx_gain,
         audio_start_ms=audio.selected_window_start_ms,
         audio_duration_ms=audio_dur,
+        script=draft.script,
         clips=solved_clips,
     )

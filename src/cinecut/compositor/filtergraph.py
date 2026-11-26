@@ -39,6 +39,15 @@ def _atempo_chain(speed: float) -> list[str]:
     return [f"atempo={stage:.6f}", f"atempo={stage:.6f}"]
 
 
+def _crop_x_expr(start_x: float, end_x: float | None, dst_dur_s: float) -> str:
+    """Build static or time-varying FFmpeg horizontal crop expression."""
+    if end_x is None or abs(end_x - start_x) < 0.02:
+        return f"(iw-ow)*{start_x:.4f}"
+    dur_s = max(0.05, dst_dur_s)
+    delta = end_x - start_x
+    return f"(iw-ow)*({start_x:.4f}+({delta:+.4f})*min(1\\,t/{dur_s:.4f}))"
+
+
 def build_filter_complex_script(timeline: EditTimeline) -> str:
     """Compile an `EditTimeline` into an FFmpeg filter_complex script.
 
@@ -81,10 +90,13 @@ def build_filter_complex_script(timeline: EditTimeline) -> str:
             base.append("eq=brightness='0.45*max(0,1-t/0.12)':eval=frame")
 
         if timeline.framing == FramingMode.CROP:
+            x_expr = _crop_x_expr(
+                clip.crop_x_norm, clip.crop_x_end_norm, dst_dur
+            )
             base.append(
                 f"crop=w='min(iw,ih*{width}/{height})':"
                 f"h='min(ih,iw*{height}/{width})':"
-                f"x='(iw-ow)*{clip.crop_x_norm:.4f}':y='(ih-oh)/2'"
+                f"x='{x_expr}':y='(ih-oh)/2'"
             )
             base.append(f"scale={width}:{height}:flags=lanczos,setsar=1")
             if clip.effect == EffectType.ZOOM_PUNCH:

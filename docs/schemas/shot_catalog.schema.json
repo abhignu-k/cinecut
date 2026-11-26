@@ -59,12 +59,40 @@
     "ShotMetadata": {
       "description": "Indexed visual shot with motion, sharpness, and framing metadata.",
       "properties": {
+        "crop_x_end": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crop X End"
+        },
         "crop_x_norm": {
           "default": 0.5,
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Crop X Norm",
           "type": "number"
+        },
+        "crop_x_start": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crop X Start"
         },
         "end_ms": {
           "exclusiveMinimum": 0,

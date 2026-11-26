@@ -1,5 +1,18 @@
 {
   "$defs": {
+    "AspectPreset": {
+      "description": "Supported target aspect ratio presets for final rendering.",
+      "enum": [
+        "auto",
+        "native",
+        "4:5",
+        "4:3",
+        "16:9",
+        "9:16"
+      ],
+      "title": "AspectPreset",
+      "type": "string"
+    },
     "CropRect": {
       "description": "Even-aligned source crop stripping baked letterbox/pillarbox bars.",
       "properties": {
@@ -31,6 +44,44 @@
         "h"
       ],
       "title": "CropRect",
+      "type": "object"
+    },
+    "EditScript": {
+      "description": "Narrative blueprint written prior to millisecond clip casting.",
+      "properties": {
+        "arc_summary": {
+          "minLength": 1,
+          "title": "Arc Summary",
+          "type": "string"
+        },
+        "beats": {
+          "items": {
+            "$ref": "#/$defs/ScriptBeat"
+          },
+          "minItems": 1,
+          "title": "Beats",
+          "type": "array"
+        },
+        "logline": {
+          "minLength": 1,
+          "title": "Logline",
+          "type": "string"
+        },
+        "recommended_aspect": {
+          "$ref": "#/$defs/AspectPreset",
+          "default": "auto"
+        },
+        "recommended_grade": {
+          "$ref": "#/$defs/GradePreset",
+          "default": "moody"
+        }
+      },
+      "required": [
+        "logline",
+        "arc_summary",
+        "beats"
+      ],
+      "title": "EditScript",
       "type": "object"
     },
     "EffectType": {
@@ -99,9 +150,95 @@
       "title": "RationalFPS",
       "type": "object"
     },
+    "ScriptBeat": {
+      "description": "Single narrative chapter mapping a song span to director intent.",
+      "properties": {
+        "beat_index": {
+          "minimum": 1,
+          "title": "Beat Index",
+          "type": "integer"
+        },
+        "dst_end_ms": {
+          "minimum": 1,
+          "title": "Dst End Ms",
+          "type": "integer"
+        },
+        "dst_start_ms": {
+          "minimum": 0,
+          "title": "Dst Start Ms",
+          "type": "integer"
+        },
+        "pacing_style": {
+          "default": "medium",
+          "title": "Pacing Style",
+          "type": "string"
+        },
+        "preferred_tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Preferred Tags",
+          "type": "array"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionLabel"
+        },
+        "story_goal": {
+          "minLength": 1,
+          "title": "Story Goal",
+          "type": "string"
+        },
+        "use_sfx": {
+          "default": false,
+          "title": "Use Sfx",
+          "type": "boolean"
+        },
+        "visual_direction": {
+          "minLength": 1,
+          "title": "Visual Direction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "beat_index",
+        "section",
+        "dst_start_ms",
+        "dst_end_ms",
+        "story_goal",
+        "visual_direction"
+      ],
+      "title": "ScriptBeat",
+      "type": "object"
+    },
+    "SectionLabel": {
+      "description": "Semantic musical section classification.",
+      "enum": [
+        "intro",
+        "buildup",
+        "drop",
+        "bridge",
+        "outro"
+      ],
+      "title": "SectionLabel",
+      "type": "string"
+    },
     "TimelineClip": {
       "description": "Single source-to-destination edit decision with strict sync check.",
       "properties": {
+        "crop_x_end_norm": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crop X End Norm"
+        },
         "crop_x_norm": {
           "default": 0.5,
           "maximum": 1.0,
@@ -229,6 +366,17 @@
       "minLength": 1,
       "title": "Render Video Path",
       "type": "string"
+    },
+    "script": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EditScript"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "sfx_audio_path": {
       "anyOf": [

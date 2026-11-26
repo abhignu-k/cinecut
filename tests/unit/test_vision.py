@@ -105,3 +105,23 @@ def test_detect_active_crop_rect_and_quality_tags(tmp_path: Path) -> None:
     )
     assert dark_cat.shots[0].is_dark_or_flat is True
     assert dark_cat.shots[0].shot_tag == "low_quality"
+
+
+def test_analyze_shot_tracks_moving_subject_pan(tmp_path: Path) -> None:
+    fourcc = cv2.VideoWriter.fourcc(*"mp4v")
+    pan_vid = tmp_path / "pan_subject.mp4"
+    writer = cv2.VideoWriter(str(pan_vid), fourcc, 30.0, (320, 180))
+    for i in range(45):
+        frame = np.full((180, 320, 3), 24, dtype=np.uint8)
+        cx = 36 + round((248 * i) / 44)
+        cv2.circle(frame, (cx, 90), 22, (255, 255, 255), -1)
+        writer.write(frame)
+    writer.release()
+
+    cat = index_video_shots(
+        pan_vid, RationalFPS(num=30, den=1), tmp_path / "pan_cache"
+    )
+    first = cat.shots[0]
+    assert first.crop_x_start is not None
+    assert first.crop_x_end is not None
+    assert first.crop_x_end - first.crop_x_start >= 0.25
